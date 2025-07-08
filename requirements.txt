@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary
+pydantic[email]
+pydantic-settings
+python-dotenv
+openai
+pinecone
+langchain
+pymupdf
+cloudinary
+python-multipart
