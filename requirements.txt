@@ -11,3 +11,5 @@ langchain
 pymupdf
 cloudinary
 python-multipart
+jinja2
+cohere
