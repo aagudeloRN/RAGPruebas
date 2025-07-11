@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consultar Base de Conocimiento</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container query-container">
+        <header>
+            <h1>Consultar Base de Conocimiento</h1>
+            <p>Haga una pregunta en lenguaje natural a sus documentos.</p>
+            <nav class="main-nav">
+                <a href="/" class="nav-button">Cargar Documento</a>
+                <a href="/library" class="nav-button">Ver Biblioteca</a>
+            </nav>
+        </header>
+
+        <form id="query-form">
+            <div class="form-group">
+                <label for="query-input">Su pregunta:</label>
+                <textarea id="query-input" name="query" rows="3" placeholder="Ej: ¿Cuáles son los principales riesgos globales para 2025?" required></textarea>
+            </div>
+            <button type="submit" id="query-btn">Preguntar</button>
+        </form>
+
+        <div id="results-area" class="results-area" style="display: none;">
+            <h2>Respuesta</h2>
+            <div id="answer" class="answer-box"></div>
+            <h3>Fuentes Utilizadas</h3>
+            <div id="sources" class="sources-grid"></div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('query-form');
+        const queryBtn = document.getElementById('query-btn');
+        const resultsArea = document.getElementById('results-area');
+        const answerDiv = document.getElementById('answer');
+        const sourcesDiv = document.getElementById('sources');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const queryInput = document.getElementById('query-input');
+            const query = queryInput.value.trim();
+
+            if (!query) return;
+
+            queryBtn.disabled = true;
+            queryBtn.textContent = 'Pensando...';
+            resultsArea.style.display = 'block';
+            answerDiv.innerHTML = '<p>Generando respuesta...</p>';
+            sourcesDiv.innerHTML = '';
+
+            try {
+                const response = await fetch('/query/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || 'Error en el servidor.');
+                }
+
+                const data = await response.json();
+                
+                answerDiv.innerText = data.answer;
+
+                if (data.sources && data.sources.length > 0) {
+                    data.sources.forEach(source => {
+                        const sourceCard = document.createElement('a');
+                        sourceCard.className = 'source-card';
+                        sourceCard.href = source.source_url || '#';
+                        sourceCard.target = '_blank';
+                        const year = source.publication_year ? ` - ${source.publication_year}` : '';
+                        sourceCard.innerHTML = `<strong>${source.title || 'Fuente desconocida'}</strong><p>${source.publisher || 'Publicador no disponible'}${year}</p>`;
+                        sourcesDiv.appendChild(sourceCard);
+                    });
+                } else {
+                    sourcesDiv.innerHTML = '<p>No se encontraron fuentes específicas para esta respuesta.</p>';
+                }
+
+            } catch (error) {
+                answerDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+            } finally {
+                queryBtn.disabled = false;
+                queryBtn.textContent = 'Preguntar';
+            }
+        });
+    </script>
+</body>
+</html>

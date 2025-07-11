@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Vigilancia e Inteligencia</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Sistema de Vigilancia e Inteligencia</h1>
+            <p>Cargue un documento PDF para analizarlo y añadirlo a la base de conocimiento.</p>
+        </header>
+
+        <nav class="main-nav">
+            <a href="/library" class="nav-button">Ver Biblioteca de Documentos</a>
+            <a href="/query" class="nav-button">Consultar Información (RAG)</a>
+        </nav>
+
+        <div id="message-area"></div>
+
+        <form id="upload-form" action="/upload-document/" method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="file">Seleccionar archivo PDF</label>
+                <input type="file" id="file" name="file" accept="application/pdf" required>
+            </div>
+
+            <fieldset>
+                <legend>Metadatos (Opcional - el sistema intentará extraerlos)</legend>
+                <div class="form-group">
+                    <label for="title">Título del Documento</label>
+                    <input type="text" id="title" name="title" placeholder="Ej: Global Risks Report 2023">
+                </div>
+                <div class="form-group">
+                    <label for="publisher">Publicado por (Autor/Organización)</label>
+                    <input type="text" id="publisher" name="publisher" placeholder="Ej: World Economic Forum">
+                </div>
+                <div class="form-group">
+                    <label for="publication_year">Año de Publicación</label>
+                    <input type="number" id="publication_year" name="publication_year" placeholder="Ej: 2023">
+                </div>
+                <div class="form-group">
+                    <label for="source_url">URL de Origen</label>
+                    <input type="url" id="source_url" name="source_url" placeholder="https://...">
+                </div>
+                <div class="form-group">
+                    <label for="language">Idioma</label>
+                    <select id="language" name="language">
+                        <option value="es">Español</option>
+                        <option value="en">Inglés</option>
+                        <option value="fr">Francés</option>
+                        <option value="pt">Portugués</option>
+                        <option value="de">Alemán</option>
+                        <option value="zh">Chino</option>
+                    </select>
+                </div>
+            </fieldset>
+
+            <button type="submit" id="submit-btn">Analizar Documento</button>
+        </form>
+    </div>
+
+    <script>
+        const form = document.getElementById('upload-form');
+        const messageArea = document.getElementById('message-area');
+        const submitBtn = document.getElementById('submit-btn');
+
+        // Función para mostrar mensajes
+        const showMessage = (text, type) => {
+            messageArea.innerHTML = `<div class="message ${type}">${text}</div>`;
+        };
+
+        // Función para hacer polling del estado del documento
+        const checkStatus = (documentId) => {
+            const interval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/documents/${documentId}/status`);
+                    if (!response.ok) {
+                        throw new Error('No se pudo obtener el estado.');
+                    }
+                    const data = await response.json();
+
+                    if (data.status === 'completed') {
+                        clearInterval(interval);
+                        showMessage('¡Éxito! El documento ha sido procesado y añadido a la base de conocimiento.', 'success');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Analizar Documento';
+                        form.reset();
+                    } else if (data.status === 'failed') {
+                        clearInterval(interval);
+                        showMessage('Error: El procesamiento del documento ha fallado. Revise los logs del servidor.', 'error');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Analizar Documento';
+                    }
+                } catch (error) {
+                    clearInterval(interval);
+                    showMessage('Error de conexión al verificar el estado.', 'error');
+                }
+            }, 3000); // Pregunta cada 3 segundos
+        };
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault(); // Prevenir el envío normal del formulario
+            const fileInput = document.getElementById('file');
+            if (!fileInput.files.length) {
+                showMessage('Por favor, seleccione un archivo PDF.', 'error');
+
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Procesando...';
+            showMessage('Enviando archivo... El procesamiento en segundo plano comenzará en breve.', 'info');
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/upload-document/', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Error en el servidor.');
+                }
+
+                const result = await response.json();
+                showMessage(`Documento ID ${result.id} recibido. El procesamiento está en curso...`, 'info');
+                checkStatus(result.id); // Iniciar el polling
+
+            } catch (error) {
+                showMessage(`Error al enviar el formulario: ${error.message}`, 'error');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Analizar Documento';
+            }        });
+    </script>
+</body>
+</html>
+

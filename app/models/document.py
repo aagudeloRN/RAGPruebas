@@ -5,6 +5,7 @@ class Document(Base):
     __tablename__ = "Repositori_Oficial"
 
     id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, index=True, nullable=True)
     filename = Column(Text, nullable=False)
     source_url = Column(Text, nullable=True)
     publisher = Column(Text, nullable=True)

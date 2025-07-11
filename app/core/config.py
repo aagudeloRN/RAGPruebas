@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     CLOUDINARY_CLOUD_NAME: str
     CLOUDINARY_API_KEY: str
     CLOUDINARY_API_SECRET: str
+    COHERE_API_KEY: str
 
     # Le decimos a Pydantic que cargue desde .env y que ignore cualquier variable extra que encuentre.
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

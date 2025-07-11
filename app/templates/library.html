@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biblioteca de Documentos</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container library-container">
+        <header>
+            <h1>Biblioteca de Documentos</h1>
+            <p>Explore y busque en la base de conocimiento.</p>
+            <nav class="main-nav">
+                <a href="/" class="nav-button">Cargar Nuevo Documento</a>
+                <a href="/query" class="nav-button">Consultar Información (RAG)</a>
+            </nav>
+        </header>
+
+        <main id="document-grid" class="document-grid">
+            <!-- Las tarjetas de documentos se insertarán aquí por JS -->
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const grid = document.getElementById('document-grid');
+
+            try {
+                const response = await fetch('/documents/');
+                if (!response.ok) {
+                    throw new Error('No se pudieron cargar los documentos.');
+                }
+                const documents = await response.json();
+
+                if (documents.length === 0) {
+                    grid.innerHTML = '<p class="empty-library">No hay documentos en la biblioteca todavía. <a href="/">Cargue el primero</a>.</p>';
+                    return;
+                }
+
+                documents.forEach(doc => {
+                    const card = document.createElement('div');
+                    card.className = 'document-card';
+                    
+                    const keywordsHTML = doc.keywords ? doc.keywords.map(k => `<span class="keyword-tag">${k}</span>`).join('') : 'No disponibles';
+
+                    card.innerHTML = `
+                        <div class="card-image-container">
+                            <img src="${doc.preview_image_url || 'https://via.placeholder.com/400x250.png?text=Sin+Vista+Previa'}" alt="Vista previa de ${doc.title}">
+                            <span class="status-badge status-${doc.status}">${doc.status}</span>
+                        </div>
+                        <div class="card-content">
+                            <h3 class="card-title">${doc.title || 'Título no disponible'}</h3>
+                            <p class="card-publisher">${doc.publisher || 'Publicador no disponible'} - ${doc.publication_year || 'Año no disponible'}</p>
+                            <p class="card-summary">${doc.summary || 'Resumen no disponible.'}</p>
+                            <div class="card-keywords">
+                                <strong>Palabras clave:</strong>
+                                <div>${keywordsHTML}</div>
+                            </div>
+                            ${doc.source_url ? `<a href="${doc.source_url}" target="_blank" class="card-link">Ver fuente original</a>` : ''}
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+
+            } catch (error) {
+                grid.innerHTML = `<p class="error">Error al cargar la biblioteca: ${error.message}</p>`;
+            }
+        });
+    </script>
+</body>
+</html>
