@@ -1,15 +1,23 @@
+import logging
+import json
 import fitz  # PyMuPDF
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from app.core.config import settings
 import openai
 from pinecone import Pinecone
+from pydantic import ValidationError
 import cloudinary
 import cloudinary.uploader
-from app.db.session import SessionLocal
-from app.db.crud import update_document_processing_results
+
+from ..core.config import settings
+from ..db.session import SessionLocal
+from ..db.crud import update_document_processing_results
+from ..schemas.llm_responses import DocumentAnalysis
 
 # --- Inicialización de Clientes ---
 # Se inicializan una vez cuando el módulo se carga para mayor eficiencia.
+
+# Configurar logging
+logger = logging.getLogger(__name__)
 
 # OpenAI
 # La librería de OpenAI lee la variable de entorno OPENAI_API_KEY automáticamente.
@@ -17,9 +25,7 @@ client_openai = openai.OpenAI()
 
 # Pinecone
 pc = Pinecone(api_key=settings.PINECONE_API_KEY)
-# NOTA: Asegúrate de tener un índice en Pinecone llamado 'vigilancia-dev-index'.
-# Si tu índice tiene otro nombre, cámbialo aquí.
-pinecone_index = pc.Index("vigilancia-dev-index")
+pinecone_index = pc.Index(settings.PINECONE_INDEX_NAME)
 
 # Cloudinary
 cloudinary.config(
@@ -33,7 +39,7 @@ def process_pdf_pipeline(file_bytes: bytes, document_id: int, user_metadata: dic
     Función que orquesta el pipeline de procesamiento.
     Diseñada para ejecutarse en segundo plano, por lo que gestiona su propia sesión de DB.
     """
-    print(f"BACKGROUND TASK: Starting processing for document ID {document_id}")
+    logger.info(f"BACKGROUND TASK: Starting processing for document ID {document_id}")
     db = SessionLocal()
     final_results = {}
     try:
@@ -43,7 +49,7 @@ def process_pdf_pipeline(file_bytes: bytes, document_id: int, user_metadata: dic
         pdf_metadata = doc.metadata
 
         if len(full_text.strip()) < 100:
-            raise ValueError("El PDF parece estar basado en imágenes o tiene muy poco texto.")
+            raise ValueError("El PDF no contiene texto extraíble o es demasiado corto para ser procesado.")
 
         # Lógica de Cascada para Metadatos
         # Prioridad 1: Datos del usuario. Prioridad 2: Datos del PDF.
@@ -86,7 +92,7 @@ def process_pdf_pipeline(file_bytes: bytes, document_id: int, user_metadata: dic
         # 4. Generar Embeddings con OpenAI y subirlos a Pinecone
         response = client_openai.embeddings.create(
             input=chunks,
-            model="text-embedding-3-small"  # Modelo económico y eficiente
+            model=settings.OPENAI_EMBEDDING_MODEL
         )
         embeddings = [item.embedding for item in response.data]
 
@@ -110,53 +116,59 @@ def process_pdf_pipeline(file_bytes: bytes, document_id: int, user_metadata: dic
             })
         
         # Subir a Pinecone en lotes para evitar errores de tamaño de petición
-        batch_size = 100  # Un tamaño de lote seguro para Pinecone
+        batch_size = settings.PINECONE_BATCH_SIZE
         for i in range(0, len(vectors_to_upsert), batch_size):
             batch = vectors_to_upsert[i:i + batch_size]
-            print(f"BACKGROUND TASK: Subiendo lote {i//batch_size + 1} a Pinecone...")
+            logger.info(f"BACKGROUND TASK: Upserting batch {i//batch_size + 1} to Pinecone for doc {document_id}")
             pinecone_index.upsert(vectors=batch, namespace="default")
 
 
-        # 5. Generar Resumen y Keywords con OpenAI
+        # 5. Generar Resumen y Keywords con OpenAI usando Tool Calling para una salida robusta
         # Usamos solo una parte del texto para no exceder el límite de tokens del LLM
         text_for_summary = " ".join(full_text.split()[:4000])
         
-        summary_response = client_openai.chat.completions.create(
-            model="gpt-3.5-turbo",
+        response = client_openai.chat.completions.create(
+            model=settings.OPENAI_LLM_MODEL,
             messages=[
-                {"role": "system", "content": "Eres un asistente experto en analizar documentos. Genera un resumen conciso (máximo 150 palabras) y después, en una nueva línea, escribe 'Palabras clave:' seguido de 10 palabras clave relevantes separadas por comas, para estas palabras toma como base el listado de tesauros homologados de la UNESCO, no incluyas nombres própios ni de organizaciones, solo información referente al contenido del texto base."},
+                {"role": "system", "content": "You are an expert document analysis assistant. Analyze the user's text and provide a summary and keywords based on the requested format."},
                 {"role": "user", "content": f"Analiza el siguiente texto:\n\n{text_for_summary}"}
             ],
+            tools=[{"type": "function", "function": {"name": "document_analysis", "description": "Extracts a summary and keywords from a text.", "parameters": DocumentAnalysis.model_json_schema()}}],
+            tool_choice={"type": "function", "function": {"name": "document_analysis"}},
             temperature=0.2,
         )
-        content = summary_response.choices[0].message.content
-        parts = content.split("Palabras clave:")
-        summary = parts[0].replace("Resumen:", "").strip()
-        keywords_str = parts[1].strip() if len(parts) > 1 else ""
-        keywords = [k.strip() for k in keywords_str.split(',') if k.strip()]
+
+        tool_call = response.choices[0].message.tool_calls[0]
+        if tool_call.function.name == "document_analysis":
+            try:
+                analysis_args = json.loads(tool_call.function.arguments)
+                validated_analysis = DocumentAnalysis(**analysis_args)
+                summary = validated_analysis.summary
+                keywords = validated_analysis.keywords
+            except (json.JSONDecodeError, ValidationError) as e:
+                logger.error(f"Failed to parse or validate LLM response for doc {document_id}: {e}")
+                raise ValueError("Error al procesar la respuesta del modelo de lenguaje.") from e
+        else:
+            raise ValueError("El modelo de lenguaje no devolvió la función esperada.")
 
         # Consolidar todos los resultados para la actualización de la base de datos
         final_results = {
-            "title": final_title, # Guardamos el título verificado
-            "filename": user_metadata.get("filename"), # Guardamos el nombre original del archivo
+            "title": final_title,
             "publisher": final_publisher,
             "publication_year": final_publication_year,
             "source_url": final_source_url,
             "status": "completed",
             "summary": summary,
             "keywords": keywords,
-            "preview_image_url": preview_image_url,
-            "language": user_metadata.get("language") # Mantenemos el idioma que el usuario seleccionó
+            "preview_image_url": preview_image_url
         }
 
     except Exception as e:
-        print(f"BACKGROUND TASK ERROR: Error processing document ID {document_id}: {e}")
-        final_results = {"status": "failed"}
+        logger.error(f"BACKGROUND TASK ERROR: Failed to process document ID {document_id}", exc_info=True)
+        final_results = {"status": "failed", "processing_error": str(e)}
     finally:
         # Actualizar la base de datos con el estado final y todos los resultados
         if final_results:
             update_document_processing_results(db=db, document_id=document_id, results=final_results)
         db.close()
-        print(f"BACKGROUND TASK: Finished processing for document ID {document_id}. Final status: {final_results.get('status')}")
-
-
+        logger.info(f"BACKGROUND TASK: Finished processing for document ID {document_id}. Final status: {final_results.get('status')}")

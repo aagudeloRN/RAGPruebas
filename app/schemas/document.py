@@ -30,6 +30,7 @@ class DocumentResponse(DocumentBase):
     keywords: Optional[List[str]] = None
     preview_image_url: Optional[str] = None
     status: str
+    processing_error: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -46,7 +47,7 @@ class Source(BaseModel):
     id: int
     title: Optional[str]
     publisher: Optional[str]
-    publication_year: Optional[str]
+    publication_year: Optional[int]
     source_url: Optional[str]
 
 class QueryResponse(BaseModel):

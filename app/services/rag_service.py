@@ -2,13 +2,13 @@ import openai
 from pinecone import Pinecone
 import cohere
 import json
-from app.core.config import settings
+from ..core.config import settings
 
 # --- Inicialización de Clientes ---
 client_openai = openai.OpenAI()
 pc = Pinecone(api_key=settings.PINECONE_API_KEY)
 co_client = cohere.Client(settings.COHERE_API_KEY)
-pinecone_index = pc.Index("vigilancia-dev-index")
+pinecone_index = pc.Index(settings.PINECONE_INDEX_NAME)
 
 def perform_rag_query(query: str):
     """
@@ -49,7 +49,7 @@ def perform_rag_query(query: str):
     for emb in query_embeddings:
         search_response = pinecone_index.query(
             vector=emb,
-            top_k=10,  # Pedimos 10 por cada consulta expandida
+            top_k=10,  # Pedimos 10 por cada consulta expandida #######################
             include_metadata=True,
             namespace="default"
         )

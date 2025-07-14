@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, ARRAY
-from app.db.base_class import Base
+from ..db.base import Base
 
 class Document(Base):
     __tablename__ = "Repositori_Oficial"

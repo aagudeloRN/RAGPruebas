@@ -2,16 +2,20 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Bac
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+import logging
 from typing import Optional, List
 from sqlalchemy.orm import Session
 
-from app.services.pipeline import process_pdf_pipeline
-from app.services.rag_service import perform_rag_query
-from app.schemas.document import DocumentResponse, LanguageEnum, DocumentStatusResponse, QueryRequest, QueryResponse
-from app.db.crud import create_document, update_document_processing_results, get_document_status, get_documents
-from app.db.session import get_db, engine
-from app.models.document import Document
-from app.db.base_class import Base
+from .services.pipeline import process_pdf_pipeline
+from .services.rag_service import perform_rag_query
+from .schemas.document import DocumentResponse, LanguageEnum, DocumentStatusResponse, QueryRequest, QueryResponse
+from .db.crud import create_document, update_document_processing_results, get_document_status, get_documents
+from .db.session import get_db, engine
+from .models.document import Document # Asegúrate que este archivo ahora existe en app/models/document.py
+from .db.base import Base # Apuntamos al nuevo archivo base.py
+
+# Configurar logging básico
+logging.basicConfig(level=logging.INFO)
 
 
 Base.metadata.create_all(bind=engine)
@@ -58,6 +62,11 @@ async def upload_document(
     
     # 1. Crear la entrada inicial en la base de datos
     db_document = create_document(db=db, document_data=metadata)
+    
+    # Es importante hacer commit aquí para que el ID del documento esté disponible
+    # y la fila sea visible para la tarea en segundo plano.
+    db.commit()
+    db.refresh(db_document)
     
     # 2. Añadir la tarea de procesamiento pesado al fondo
     background_tasks.add_task(process_pdf_pipeline, file_bytes=file_bytes, document_id=db_document.id, user_metadata=metadata)
