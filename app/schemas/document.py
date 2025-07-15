@@ -24,6 +24,15 @@ class DocumentCreate(DocumentBase):
     pass
 
 
+class DocumentCreateRequest(BaseModel):
+    title: Optional[str] = None
+    source_url: Optional[str] = None
+    publisher: Optional[str] = None
+    publication_year: Optional[int] = None
+    language: Optional[str] = None
+    summary: Optional[str] = None
+    keywords: Optional[List[str]] = None
+
 class DocumentResponse(DocumentBase):
     id: int
     summary: Optional[str] = None
@@ -42,6 +51,62 @@ class DocumentStatusResponse(BaseModel):
 # --- Schemas para la consulta RAG ---
 class QueryRequest(BaseModel):
     query: str
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+
+class ConversationalQueryRequest(BaseModel):
+    query: str
+    history: List[List[str]] = [] # [[user_message, bot_response], ...]
 
 class Source(BaseModel):
     id: int

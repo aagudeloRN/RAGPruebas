@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validar Metadatos</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Validar Metadatos del Documento</h1>
+            <p>Por favor, revise y complete los metadatos extraídos automáticamente. Asegúrese de añadir la URL de origen si no se detectó.</p>
+        </header>
+
+        <div id="message-area"></div>
+
+        <form id="metadata-form">
+            <input type="hidden" id="document_id" name="document_id" value="{{ document.id }}">
+            <input type="hidden" id="filename" name="filename" value="{{ document.filename }}">
+
+            <div class="form-group">
+                <label for="title">Título del Documento</label>
+                <input type="text" id="title" name="title" value="{{ document.title or '' }}" placeholder="Ej: Global Risks Report 2023">
+            </div>
+            <div class="form-group">
+                <label for="publisher">Publicado por (Autor/Organización)</label>
+                <input type="text" id="publisher" name="publisher" value="{{ document.publisher or '' }}" placeholder="Ej: World Economic Forum">
+            </div>
+            <div class="form-group">
+                <label for="publication_year">Año de Publicación</label>
+                <input type="number" id="publication_year" name="publication_year" value="{{ document.publication_year or '' }}" placeholder="Ej: 2023">
+            </div>
+            <div class="form-group">
+                <label for="source_url">URL de Origen</label>
+                <input type="url" id="source_url" name="source_url" value="{{ document.source_url or '' }}" placeholder="https://..." required>
+            </div>
+            <div class="form-group">
+                <label for="language">Idioma</label>
+                <select id="language" name="language">
+                    <option value="es" {% if document.language == 'es' %}selected{% endif %}>Español</option>
+                    <option value="en" {% if document.language == 'en' %}selected{% endif %}>Inglés</option>
+                    <option value="fr" {% if document.language == 'fr' %}selected{% endif %}>Francés</option>
+                    <option value="pt" {% if document.language == 'pt' %}selected{% endif %}>Portugués</option>
+                    <option value="de" {% if document.language == 'de' %}selected{% endif %}>Alemán</option>
+                    <option value="zh" {% if document.language == 'zh' %}selected{% endif %}>Chino</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="summary">Resumen</label>
+                <textarea id="summary" name="summary" rows="5" placeholder="Resumen del documento">{{ document.summary or '' }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="keywords">Palabras Clave (separadas por coma)</label>
+                <input type="text" id="keywords" name="keywords" value="{{ document.keywords | join(', ') or '' }}" placeholder="Ej: IA, ética, regulación">
+            </div>
+
+            <button type="submit" id="submit-btn">Confirmar y Procesar</button>
+        </form>
+    </div>
+
+    <script>
+        const form = document.getElementById('metadata-form');
+        const messageArea = document.getElementById('message-area');
+        const submitBtn = document.getElementById('submit-btn');
+
+        const showMessage = (text, type) => {
+            messageArea.innerHTML = `<div class="message ${type}">${text}</div>`;
+        };
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Procesando...';
+            showMessage('Validando metadatos y comenzando procesamiento pesado...', 'info');
+
+            const documentId = document.getElementById('document_id').value;
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+            
+            // Convertir keywords de string a array
+            if (data.keywords) {
+                data.keywords = data.keywords.split(',').map(kw => kw.trim()).filter(kw => kw.length > 0);
+            } else {
+                data.keywords = [];
+            }
+
+            try {
+                const response = await fetch(`/process-document/${documentId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Error en el servidor.');
+                }
+
+                showMessage('Documento en procesamiento. Será redirigido a la biblioteca en breve.', 'success');
+                // Redirigir a la biblioteca o a una página de estado
+                window.location.href = '/library';
+
+            } catch (error) {
+                showMessage(`Error al procesar el documento: ${error.message}`, 'error');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Confirmar y Procesar';
+            }
+        });
+    </script>
+</body>
+</html>

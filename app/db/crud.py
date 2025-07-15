@@ -16,6 +16,10 @@ def get_document_status(db: Session, document_id: int) -> Optional[str]:
         return None
     return document.status
 
+def get_document(db: Session, document_id: int) -> Optional[Document]:
+    """Obtiene un documento por su ID."""
+    return db.query(Document).filter(Document.id == document_id).first()
+
 def get_documents(db: Session, skip: int = 0, limit: int = 100) -> List[Document]:
     """Recupera una lista de documentos, con paginación."""
     return db.query(Document).order_by(Document.id.desc()).offset(skip).limit(limit).all()

@@ -11,6 +11,12 @@
         <header>
             <h1>Biblioteca de Documentos</h1>
             <p>Explore y busque en la base de conocimiento.</p>
+            <form id="search-form" class="search-form">
+                <input type="text" id="search-query" name="query" placeholder="Buscar documentos..." value="{{ query or '' }}">
+                <input type="number" id="start-year" name="start_year" placeholder="Año inicio" value="{{ start_year or '' }}">
+                <input type="number" id="end-year" name="end_year" placeholder="Año fin" value="{{ end_year or '' }}">
+                <button type="submit">Buscar</button>
+            </form>
             <nav class="main-nav">
                 <a href="/" class="nav-button">Cargar Nuevo Documento</a>
                 <a href="/query" class="nav-button">Consultar Información (RAG)</a>
@@ -25,47 +31,93 @@
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             const grid = document.getElementById('document-grid');
+            const searchQueryInput = document.getElementById('search-query');
+            const startYearInput = document.getElementById('start-year');
+            const endYearInput = document.getElementById('end-year');
+            const searchForm = document.getElementById('search-form');
 
-            try {
-                const response = await fetch('/documents/');
-                if (!response.ok) {
-                    throw new Error('No se pudieron cargar los documentos.');
+            const fetchDocuments = async (query = null, startYear = null, endYear = null) => {
+                grid.innerHTML = ''; // Limpiar resultados anteriores
+                let url = '/documents/';
+                const params = new URLSearchParams();
+                if (query) {
+                    params.append('query', query);
                 }
-                const documents = await response.json();
-
-                if (documents.length === 0) {
-                    grid.innerHTML = '<p class="empty-library">No hay documentos en la biblioteca todavía. <a href="/">Cargue el primero</a>.</p>';
-                    return;
+                if (startYear) {
+                    params.append('start_year', startYear);
+                }
+                if (endYear) {
+                    params.append('end_year', endYear);
+                }
+                if (params.toString()) {
+                    url += `?${params.toString()}`;
                 }
 
-                documents.forEach(doc => {
-                    const card = document.createElement('div');
-                    card.className = 'document-card';
-                    
-                    const keywordsHTML = doc.keywords ? doc.keywords.map(k => `<span class="keyword-tag">${k}</span>`).join('') : 'No disponibles';
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) {
+                        throw new Error('No se pudieron cargar los documentos.');
+                    }
+                    const documents = await response.json();
 
-                    card.innerHTML = `
-                        <div class="card-image-container">
-                            <img src="${doc.preview_image_url || 'https://via.placeholder.com/400x250.png?text=Sin+Vista+Previa'}" alt="Vista previa de ${doc.title}">
-                            <span class="status-badge status-${doc.status}">${doc.status}</span>
-                        </div>
-                        <div class="card-content">
-                            <h3 class="card-title">${doc.title || 'Título no disponible'}</h3>
-                            <p class="card-publisher">${doc.publisher || 'Publicador no disponible'} - ${doc.publication_year || 'Año no disponible'}</p>
-                            <p class="card-summary">${doc.summary || 'Resumen no disponible.'}</p>
-                            <div class="card-keywords">
-                                <strong>Palabras clave:</strong>
-                                <div>${keywordsHTML}</div>
+                    if (documents.length === 0) {
+                        grid.innerHTML = '<p class="empty-library">No hay documentos en la biblioteca que coincidan con su búsqueda. <a href="/library">Ver todos los documentos</a>.</p>';
+                        return;
+                    }
+
+                    documents.forEach(doc => {
+                        const card = document.createElement('div');
+                        card.className = 'document-card';
+                        
+                        const keywordsHTML = doc.keywords ? doc.keywords.map(k => `<span class="keyword-tag">${k}</span>`).join('') : 'No disponibles';
+
+                        card.innerHTML = `
+                            <div class="card-image-container">
+                                <img src="${doc.preview_image_url || 'https://via.placeholder.com/400x250.png?text=Sin+Vista+Previa'}" alt="Vista previa de ${doc.title}">
+                                <span class="status-badge status-${doc.status}">${doc.status}</span>
                             </div>
-                            ${doc.source_url ? `<a href="${doc.source_url}" target="_blank" class="card-link">Ver fuente original</a>` : ''}
-                        </div>
-                    `;
-                    grid.appendChild(card);
-                });
+                            <div class="card-content">
+                                <h3 class="card-title">${doc.title || 'Título no disponible'}</h3>
+                                <p class="card-publisher">${doc.publisher || 'Publicador no disponible'} - ${doc.publication_year || 'Año no disponible'}</p>
+                                <p class="card-summary">${doc.summary || 'Resumen no disponible.'}</p>
+                                <div class="card-keywords">
+                                    <strong>Palabras clave:</strong>
+                                    <div>${keywordsHTML}</div>
+                                </div>
+                                ${doc.source_url ? `<a href="${doc.source_url}" target="_blank" class="card-link">Ver fuente original</a>` : ''}
+                            </div>
+                        `;
+                        grid.appendChild(card);
+                    });
 
-            } catch (error) {
-                grid.innerHTML = `<p class="error">Error al cargar la biblioteca: ${error.message}</p>`;
-            }
+                } catch (error) {
+                    grid.innerHTML = `<p class="error">Error al cargar la biblioteca: ${error.message}</p>`;
+                }
+            };
+
+            // Cargar documentos al inicio, con la query y años si existen en la URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const initialQuery = urlParams.get('query');
+            const initialStartYear = urlParams.get('start_year');
+            const initialEndYear = urlParams.get('end_year');
+            fetchDocuments(initialQuery, initialStartYear, initialEndYear);
+
+            // Manejar el envío del formulario de búsqueda
+            searchForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const query = searchQueryInput.value;
+                const startYear = startYearInput.value;
+                const endYear = endYearInput.value;
+
+                const params = new URLSearchParams();
+                if (query) params.append('query', query);
+                if (startYear) params.append('start_year', startYear);
+                if (endYear) params.append('end_year', endYear);
+
+                // Actualizar la URL sin recargar la página
+                history.pushState(null, '', `/library${params.toString() ? '?' + params.toString() : ''}`);
+                fetchDocuments(query, startYear, endYear);
+            });
         });
     </script>
 </body>

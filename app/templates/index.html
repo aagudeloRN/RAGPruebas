@@ -9,8 +9,8 @@
 <body>
     <div class="container">
         <header>
-            <h1>Sistema de Vigilancia e Inteligencia</h1>
-            <p>Cargue un documento PDF para analizarlo y añadirlo a la base de conocimiento.</p>
+            <h1>Base de Conocimiento: {{ kb_name }}</h1>
+            <p>Cargue un documento PDF para analizarlo y añadirlo a esta base de conocimiento.</p>
         </header>
 
         <nav class="main-nav">
@@ -26,8 +26,16 @@
                 <input type="file" id="file" name="file" accept="application/pdf" required>
             </div>
 
-            <fieldset>
-                <legend>Metadatos (Opcional - el sistema intentará extraerlos)</legend>
+            <button type="submit" id="submit-btn">Cargar Documento</button>
+        </form>
+
+        <div id="metadata-section" class="hidden">
+            <h2>Validar Metadatos del Documento</h2>
+            <p>Por favor, revise y complete los metadatos extraídos automáticamente. Asegúrese de añadir la URL de origen si no se detectó.</p>
+            <form id="metadata-form">
+                <input type="hidden" id="document_id" name="document_id">
+                <input type="hidden" id="pdf_path_hidden" name="pdf_path">
+
                 <div class="form-group">
                     <label for="title">Título del Documento</label>
                     <input type="text" id="title" name="title" placeholder="Ej: Global Risks Report 2023">
@@ -42,7 +50,7 @@
                 </div>
                 <div class="form-group">
                     <label for="source_url">URL de Origen</label>
-                    <input type="url" id="source_url" name="source_url" placeholder="https://...">
+                    <input type="url" id="source_url" name="source_url" placeholder="https://..." required>
                 </div>
                 <div class="form-group">
                     <label for="language">Idioma</label>
@@ -55,65 +63,46 @@
                         <option value="zh">Chino</option>
                     </select>
                 </div>
-            </fieldset>
+                <div class="form-group">
+                    <label for="summary">Resumen</label>
+                    <textarea id="summary" name="summary" rows="5" placeholder="Resumen del documento"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="keywords">Palabras Clave (separadas por coma)</label>
+                    <input type="text" id="keywords" name="keywords" placeholder="Ej: IA, ética, regulación">
+                </div>
 
-            <button type="submit" id="submit-btn">Analizar Documento</button>
-        </form>
+                <button type="submit" id="process-btn">Confirmar y Procesar</button>
+            </form>
+        </div>
     </div>
 
     <script>
-        const form = document.getElementById('upload-form');
+        const uploadForm = document.getElementById('upload-form');
+        const metadataSection = document.getElementById('metadata-section');
+        const metadataForm = document.getElementById('metadata-form');
         const messageArea = document.getElementById('message-area');
-        const submitBtn = document.getElementById('submit-btn');
+        const uploadBtn = document.getElementById('submit-btn');
+        const processBtn = document.getElementById('process-btn');
 
         // Función para mostrar mensajes
         const showMessage = (text, type) => {
             messageArea.innerHTML = `<div class="message ${type}">${text}</div>`;
         };
 
-        // Función para hacer polling del estado del documento
-        const checkStatus = (documentId) => {
-            const interval = setInterval(async () => {
-                try {
-                    const response = await fetch(`/documents/${documentId}/status`);
-                    if (!response.ok) {
-                        throw new Error('No se pudo obtener el estado.');
-                    }
-                    const data = await response.json();
-
-                    if (data.status === 'completed') {
-                        clearInterval(interval);
-                        showMessage('¡Éxito! El documento ha sido procesado y añadido a la base de conocimiento.', 'success');
-                        submitBtn.disabled = false;
-                        submitBtn.textContent = 'Analizar Documento';
-                        form.reset();
-                    } else if (data.status === 'failed') {
-                        clearInterval(interval);
-                        showMessage('Error: El procesamiento del documento ha fallado. Revise los logs del servidor.', 'error');
-                        submitBtn.disabled = false;
-                        submitBtn.textContent = 'Analizar Documento';
-                    }
-                } catch (error) {
-                    clearInterval(interval);
-                    showMessage('Error de conexión al verificar el estado.', 'error');
-                }
-            }, 3000); // Pregunta cada 3 segundos
-        };
-
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault(); // Prevenir el envío normal del formulario
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
             const fileInput = document.getElementById('file');
             if (!fileInput.files.length) {
                 showMessage('Por favor, seleccione un archivo PDF.', 'error');
-
                 return;
             }
 
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Procesando...';
-            showMessage('Enviando archivo... El procesamiento en segundo plano comenzará en breve.', 'info');
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Extrayendo metadatos...';
+            showMessage('Enviando archivo y extrayendo metadatos. Esto puede tardar unos segundos...', 'info');
 
-            const formData = new FormData(form);
+            const formData = new FormData(uploadForm);
 
             try {
                 const response = await fetch('/upload-document/', {
@@ -127,14 +116,77 @@
                 }
 
                 const result = await response.json();
-                showMessage(`Documento ID ${result.id} recibido. El procesamiento está en curso...`, 'info');
-                checkStatus(result.id); // Iniciar el polling
+                const metadata = result.metadata;
+
+                // Rellenar el formulario de metadatos
+                document.getElementById('document_id').value = result.temp_id; // Cambiado a temp_id
+                document.getElementById('pdf_path_hidden').value = result.pdf_path;
+                document.getElementById('title').value = metadata.title || '';
+                document.getElementById('publisher').value = metadata.publisher || '';
+                document.getElementById('publication_year').value = metadata.publication_year || '';
+                document.getElementById('source_url').value = metadata.source_url || '';
+                document.getElementById('language').value = metadata.language || 'es';
+                document.getElementById('summary').value = metadata.summary || '';
+                document.getElementById('keywords').value = (metadata.keywords && metadata.keywords.length > 0) ? metadata.keywords.join(', ') : '';
+
+                // Mostrar la sección de metadatos y ocultar el formulario de subida
+                uploadForm.classList.add('hidden');
+                metadataSection.classList.remove('hidden');
+                showMessage('Metadatos extraídos. Por favor, revise y confirme.', 'success');
 
             } catch (error) {
-                showMessage(`Error al enviar el formulario: ${error.message}`, 'error');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Analizar Documento';
-            }        });
+                showMessage(`Error al extraer metadatos: ${error.message}`, 'error');
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Cargar Documento';
+            }
+        });
+
+        metadataForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            processBtn.disabled = true;
+            processBtn.textContent = 'Procesando documento...';
+            showMessage('Confirmando metadatos y comenzando procesamiento pesado...', 'info');
+
+            const tempId = document.getElementById('document_id').value; // Ahora es temp_id
+            const pdfPath = document.getElementById('pdf_path_hidden').value;
+            const formData = new FormData(metadataForm);
+            const data = Object.fromEntries(formData.entries());
+            
+            // Convertir keywords de string a array
+            if (data.keywords) {
+                data.keywords = data.keywords.split(',').map(kw => kw.trim()).filter(kw => kw.length > 0);
+            } else {
+                data.keywords = [];
+            }
+
+            // Eliminar document_id y pdf_path del objeto de datos, ya que se pasan en la URL o no son parte del modelo
+            delete data.document_id; // Ya no es necesario en el body
+            delete data.pdf_path; // Ya no es necesario en el body
+
+            try {
+                const response = await fetch(`/process-document/${tempId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Error en el servidor.');
+                }
+
+                showMessage('Documento procesado con éxito. Redirigiendo a la biblioteca.', 'success');
+                window.location.href = '/library';
+
+            } catch (error) {
+                showMessage(`Error al procesar el documento: ${error.message}`, 'error');
+                processBtn.disabled = false;
+                processBtn.textContent = 'Confirmar y Procesar';
+            }
+        });
     </script>
 </body>
 </html>

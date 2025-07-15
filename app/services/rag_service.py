@@ -2,6 +2,12 @@ import openai
 from pinecone import Pinecone
 import cohere
 import json
+from typing import List, Optional
+from sqlalchemy.orm import Session
+
+from ..core.config import settings
+from ..db.crud import get_document
+from ..schemas.document import DocumentResponse
 from ..core.config import settings
 
 # --- Inicialización de Clientes ---
@@ -10,7 +16,66 @@ pc = Pinecone(api_key=settings.PINECONE_API_KEY)
 co_client = cohere.Client(settings.COHERE_API_KEY)
 pinecone_index = pc.Index(settings.PINECONE_INDEX_NAME)
 
-def perform_rag_query(query: str):
+def semantic_search_documents(
+    query: str,
+    namespace: str,
+    db: Session,
+    start_year: Optional[int] = None,
+    end_year: Optional[int] = None
+) -> List[DocumentResponse]:
+    """
+    Realiza una búsqueda semántica de documentos en Pinecone y recupera los detalles completos de la DB.
+    """
+    try:
+        # 1. Generar embedding para la consulta
+        query_embedding_response = client_openai.embeddings.create(
+            input=[query],
+            model=settings.OPENAI_EMBEDDING_MODEL
+        )
+        query_embedding = query_embedding_response.data[0].embedding
+
+        # Construir filtro de Pinecone
+        pinecone_filter = {}
+        if start_year is not None:
+            pinecone_filter["publication_year"] = {"$gte": start_year}
+        if end_year is not None:
+            if "publication_year" in pinecone_filter:
+                pinecone_filter["publication_year"]["$lte"] = end_year
+            else:
+                pinecone_filter["publication_year"] = {"$lte": end_year}
+
+        # 2. Buscar en Pinecone
+        search_response = pinecone_index.query(
+            vector=query_embedding,
+            top_k=20, # Aumentar top_k para obtener más documentos únicos potenciales antes de filtrar
+            include_metadata=True,
+            namespace=namespace,
+            filter=pinecone_filter if pinecone_filter else None
+        )
+
+        # Recopilar IDs de documentos únicos en orden de relevancia
+        unique_document_ids_ordered = []
+        seen_document_ids = set()
+        for match in search_response.matches:
+            doc_id = match.metadata.get("document_id")
+            if doc_id and doc_id not in seen_document_ids:
+                unique_document_ids_ordered.append(doc_id)
+                seen_document_ids.add(doc_id)
+
+        # 3. Recuperar detalles completos de los documentos desde PostgreSQL
+        documents = []
+        for doc_id in unique_document_ids_ordered:
+            doc = get_document(db, doc_id)
+            if doc:
+                documents.append(DocumentResponse.model_validate(doc))
+
+        return documents
+
+    except Exception as e:
+        print(f"Error en la búsqueda semántica: {e}")
+        return []
+
+def perform_rag_query(query: str, namespace: str):
     """
     Orquesta el proceso de Retrieval-Augmented Generation (RAG).
     """
@@ -51,7 +116,7 @@ def perform_rag_query(query: str):
             vector=emb,
             top_k=10,  # Pedimos 10 por cada consulta expandida #######################
             include_metadata=True,
-            namespace="default"
+            namespace=namespace
         )
         for match in search_response.matches:
             if match.id not in seen_chunk_ids:
