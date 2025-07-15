@@ -1,0 +1,471 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --color-dark: #253d36;
+    --color-lime: #c0d400;
+    --color-teal: #00b8a3;
+    --color-blue: #0068ff;
+    --color-yellow: #ffca00;
+    --color-orange: #ff4c17;
+    --color-white: #ffffff;
+    --color-gray-light: rgba(255, 255, 255, 0.1);
+    --color-gray-medium: rgba(255, 255, 255, 0.05);
+    
+    /* Spacing system */
+    --spacing-xs: 0.25rem;
+    --spacing-sm: 0.5rem;
+    --spacing-md: 1rem;
+    --spacing-lg: 1.5rem;
+    --spacing-xl: 2rem;
+    --spacing-xxl: 2.5rem;
+    
+    /* Border radius */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    
+    /* Shadows */
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
+    
+    /* Transitions */
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.3s ease;
+    --transition-slow: 0.5s ease;
+}
+
+/* Reset y base */
+*:focus {
+    outline: 2px solid var(--color-yellow);
+    outline-offset: 2px;
+}
+
+body {
+    font-family: 'Source Sans Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, var(--color-dark) 0%, #1a2f28 100%);
+    line-height: 1.6;
+    color: var(--color-white);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Layout */
+.container {
+    max-width: 800px;
+    margin: var(--spacing-xl) auto;
+    padding: var(--spacing-md);
+}
+
+.podcast-background {
+    background: linear-gradient(135deg, rgba(37, 61, 54, 0.95) 0%, rgba(0, 184, 163, 0.85) 100%);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-xl);
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+}
+
+.podcast-background::before {
+    content: '🎙️';
+    position: absolute;
+    font-size: 20rem;
+    opacity: 0.03;
+    right: -5rem;
+    top: -5rem;
+    transform: rotate(-15deg);
+    pointer-events: none;
+}
+
+/* Logo */
+.logo-container {
+    text-align: center;
+    margin-bottom: var(--spacing-xl);
+}
+
+.logo {
+    max-width: 200px;
+    height: auto;
+    transition: transform var(--transition-normal);
+}
+
+.logo:hover {
+    transform: scale(1.05);
+}
+
+/* Form */
+.form {
+    background-color: var(--color-gray-light);
+    padding: var(--spacing-xl);
+    border-radius: var(--radius-md);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.form-header {
+    text-align: center;
+    margin-bottom: var(--spacing-xxl);
+}
+
+h1 {
+    color: var(--color-lime);
+    font-size: clamp(2rem, 5vw, 2.5rem);
+    margin-bottom: var(--spacing-md);
+    font-weight: 700;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.subtitle {
+    font-size: 1.1rem;
+    opacity: 0.9;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* Form groups */
+.form-group {
+    margin-bottom: var(--spacing-lg);
+}
+
+label {
+    display: block;
+    margin-bottom: var(--spacing-sm);
+    color: var(--color-white);
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.required {
+    color: var(--color-orange);
+    margin-left: var(--spacing-xs);
+}
+
+/* Inputs */
+input[type="email"],
+input[type="text"] {
+    width: 100%;
+    padding: var(--spacing-md);
+    border: 2px solid var(--color-gray-light);
+    border-radius: var(--radius-sm);
+    font-size: 1rem;
+    background-color: var(--color-gray-medium);
+    color: var(--color-white);
+    font-family: inherit;
+    transition: all var(--transition-normal);
+}
+
+input[type="email"]::placeholder,
+input[type="text"]::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+input[type="email"]:focus,
+input[type="text"]:focus {
+    border-color: var(--color-yellow);
+    box-shadow: 0 0 0 3px rgba(255, 202, 0, 0.2);
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+input[type="email"]:invalid:not(:focus):not(:placeholder-shown),
+input[type="text"]:invalid:not(:focus):not(:placeholder-shown) {
+    border-color: var(--color-orange);
+    box-shadow: 0 0 0 3px rgba(255, 76, 23, 0.2);
+}
+
+/* Recording section */
+.recording-section {
+    background: linear-gradient(135deg, rgba(0, 104, 255, 0.1) 0%, rgba(0, 184, 163, 0.1) 100%);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(0, 104, 255, 0.2);
+    position: relative;
+}
+
+.recording-instructions {
+    font-size: 0.9rem;
+    opacity: 0.8;
+    margin-bottom: var(--spacing-md);
+    font-style: italic;
+}
+
+.audio-controls {
+    display: flex;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+/* Buttons */
+.recording-btn,
+.submit-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    font-family: inherit;
+    transition: all var(--transition-normal);
+    position: relative;
+    overflow: hidden;
+    min-height: 48px; /* Accessibility: minimum touch target */
+}
+
+.recording-btn::before,
+.submit-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left var(--transition-slow);
+}
+
+.recording-btn:hover::before,
+.submit-btn:hover::before {
+    left: 100%;
+}
+
+.btn-icon {
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+.start-btn {
+    background: linear-gradient(135deg, var(--color-teal) 0%, #00a693 100%);
+    color: var(--color-white);
+}
+
+.stop-btn {
+    background: linear-gradient(135deg, var(--color-orange) 0%, #e63d0f 100%);
+    color: var(--color-white);
+}
+
+.submit-btn {
+    background: linear-gradient(135deg, var(--color-lime) 0%, #a8b800 100%);
+    color: var(--color-dark);
+    width: 100%;
+    margin-top: var(--spacing-lg);
+    font-size: 1.1rem;
+}
+
+.recording-btn:hover,
+.submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.recording-btn:active,
+.submit-btn:active {
+    transform: translateY(0);
+}
+
+.recording-btn:disabled,
+.submit-btn:disabled {
+    background: var(--color-gray-light);
+    color: rgba(255, 255, 255, 0.5);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.recording-btn:disabled::before,
+.submit-btn:disabled::before {
+    display: none;
+}
+
+/* Timer */
+.timer {
+    text-align: center;
+    font-size: 1.5rem;
+    margin-top: var(--spacing-md);
+    color: var(--color-yellow);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Audio preview */
+audio {
+    width: 100%;
+    margin-top: var(--spacing-md);
+    border-radius: var(--radius-sm);
+    background-color: var(--color-gray-medium);
+}
+
+/* Error messages */
+.error-message {
+    font-size: 0.875rem;
+    margin-top: var(--spacing-xs);
+    display: block;
+    min-height: 1.2em;
+    color: var(--color-orange);
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: all var(--transition-normal);
+}
+
+.error-message.error-show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Status messages */
+.status-message {
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-sm);
+    text-align: center;
+    font-weight: 600;
+    transition: all var(--transition-normal);
+    min-height: 1.5rem;
+}
+
+.status-message:empty {
+    padding: 0;
+    margin: 0;
+}
+
+.status-message.success {
+    background: linear-gradient(135deg, rgba(192, 212, 0, 0.2) 0%, rgba(168, 184, 0, 0.2) 100%);
+    color: var(--color-lime);
+    border: 1px solid rgba(192, 212, 0, 0.3);
+}
+
+.status-message.error {
+    background: linear-gradient(135deg, rgba(255, 76, 23, 0.2) 0%, rgba(230, 61, 15, 0.2) 100%);
+    color: var(--color-orange);
+    border: 1px solid rgba(255, 76, 23, 0.3);
+}
+
+.status-message.info {
+    background: linear-gradient(135deg, rgba(0, 104, 255, 0.2) 0%, rgba(0, 184, 163, 0.2) 100%);
+    color: var(--color-blue);
+    border: 1px solid rgba(0, 104, 255, 0.3);
+}
+
+/* Error container for compatibility issues */
+.error-container {
+    text-align: center;
+    padding: var(--spacing-xxl);
+    background: var(--color-gray-light);
+    border-radius: var(--radius-md);
+    backdrop-filter: blur(10px);
+}
+
+.error-container h2 {
+    color: var(--color-orange);
+    margin-bottom: var(--spacing-md);
+}
+
+.error-container p {
+    margin-bottom: var(--spacing-md);
+    opacity: 0.9;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .container {
+        margin: var(--spacing-md) auto;
+        padding: var(--spacing-sm);
+    }
+    
+    .podcast-background {
+        padding: var(--spacing-md);
+    }
+    
+    .form {
+        padding: var(--spacing-md);
+    }
+    
+    .audio-controls {
+        flex-direction: column;
+    }
+    
+    .recording-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    h1 {
+        font-size: 2rem;
+    }
+    
+    .timer {
+        font-size: 1.25rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .podcast-background::before {
+        font-size: 15rem;
+        right: -3rem;
+        top: -3rem;
+    }
+    
+    .logo {
+        max-width: 150px;
+    }
+    
+    .subtitle {
+        font-size: 1rem;
+    }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    :root {
+        --color-gray-light: rgba(255, 255, 255, 0.2);
+        --color-gray-medium: rgba(255, 255, 255, 0.1);
+    }
+    
+    input[type="email"],
+    input[type="text"] {
+        border-width: 3px;
+    }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+    
+    .recording-btn::before,
+    .submit-btn::before {
+        display: none;
+    }
+}
+
+/* Print styles */
+@media print {
+    .podcast-background::before {
+        display: none;
+    }
+    
+    .recording-btn,
+    .submit-btn,
+    audio {
+        display: none;
+    }
+    
+    .form {
+        background: white;
+        color: black;
+    }
+}

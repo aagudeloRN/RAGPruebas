@@ -8,6 +8,7 @@
 </head>
 <body>
     <div class="container">
+        <div class="main-background">
         <header>
             <h1>Sistema de Vigilancia e Inteligencia</h1>
             <p>Cargue un documento PDF para analizarlo y añadirlo a la base de conocimiento.</p>
@@ -20,7 +21,8 @@
 
         <div id="message-area"></div>
 
-        <form id="upload-form" action="/upload-document/" method="post" enctype="multipart/form-data">
+        <div class="form-container">
+            <form id="upload-form" action="/upload-document/" method="post" enctype="multipart/form-data">
             <div class="form-group">
                 <label for="file">Seleccionar archivo PDF</label>
                 <input type="file" id="file" name="file" accept="application/pdf" required>
@@ -57,8 +59,13 @@
                 </div>
             </fieldset>
 
-            <button type="submit" id="submit-btn">Analizar Documento</button>
+                <button type="submit" id="submit-btn" class="btn btn-primary btn-full">
+                    <span class="btn-icon">📄</span>
+                    Analizar Documento
+                </button>
         </form>
+        </div>
+        </div>
     </div>
 
     <script>

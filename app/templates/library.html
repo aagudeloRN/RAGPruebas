@@ -8,6 +8,7 @@
 </head>
 <body>
     <div class="container library-container">
+        <div class="main-background">
         <header>
             <h1>Biblioteca de Documentos</h1>
             <p>Explore y busque en la base de conocimiento.</p>
@@ -17,14 +18,36 @@
             </nav>
         </header>
 
+            <div class="search-filters">
+                <div class="filters-grid">
+                    <div class="form-group">
+                        <label for="search-input">Buscar documentos</label>
+                        <input type="text" id="search-input" placeholder="Buscar por título, autor, palabras clave...">
+                    </div>
+                    <div class="form-group">
+                        <label for="year-from">Año desde</label>
+                        <input type="number" id="year-from" placeholder="2020" min="1900" max="2030">
+                    </div>
+                    <div class="form-group">
+                        <label for="year-to">Año hasta</label>
+                        <input type="number" id="year-to" placeholder="2024" min="1900" max="2030">
+                    </div>
+                </div>
+            </div>
+
         <main id="document-grid" class="document-grid">
             <!-- Las tarjetas de documentos se insertarán aquí por JS -->
         </main>
+        </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             const grid = document.getElementById('document-grid');
+            const searchInput = document.getElementById('search-input');
+            const yearFromInput = document.getElementById('year-from');
+            const yearToInput = document.getElementById('year-to');
+            let allDocuments = [];
 
             try {
                 const response = await fetch('/documents/');
@@ -32,9 +55,36 @@
                     throw new Error('No se pudieron cargar los documentos.');
                 }
                 const documents = await response.json();
+                allDocuments = documents;
 
                 if (documents.length === 0) {
-                    grid.innerHTML = '<p class="empty-library">No hay documentos en la biblioteca todavía. <a href="/">Cargue el primero</a>.</p>';
+                    grid.innerHTML = `
+                        <div class="empty-library">
+                            <h3>📚 Biblioteca Vacía</h3>
+                            <p>No hay documentos en la biblioteca todavía.</p>
+                            <a href="/" class="btn btn-primary">Cargar Primer Documento</a>
+                        </div>
+                    `;
+                    return;
+                }
+
+                renderDocuments(documents);
+
+            } catch (error) {
+                grid.innerHTML = `<div class="empty-library"><h3>❌ Error</h3><p>Error al cargar la biblioteca: ${error.message}</p></div>`;
+            }
+
+            // Función para renderizar documentos
+            function renderDocuments(documents) {
+                grid.innerHTML = '';
+                
+                if (documents.length === 0) {
+                    grid.innerHTML = `
+                        <div class="empty-library">
+                            <h3>🔍 Sin Resultados</h3>
+                            <p>No se encontraron documentos que coincidan con los filtros.</p>
+                        </div>
+                    `;
                     return;
                 }
 
@@ -62,10 +112,34 @@
                     `;
                     grid.appendChild(card);
                 });
-
-            } catch (error) {
-                grid.innerHTML = `<p class="error">Error al cargar la biblioteca: ${error.message}</p>`;
             }
+
+            // Función de filtrado
+            function filterDocuments() {
+                const searchTerm = searchInput.value.toLowerCase();
+                const yearFrom = parseInt(yearFromInput.value) || 0;
+                const yearTo = parseInt(yearToInput.value) || 9999;
+
+                const filtered = allDocuments.filter(doc => {
+                    const matchesSearch = !searchTerm || 
+                        (doc.title && doc.title.toLowerCase().includes(searchTerm)) ||
+                        (doc.publisher && doc.publisher.toLowerCase().includes(searchTerm)) ||
+                        (doc.keywords && doc.keywords.some(k => k.toLowerCase().includes(searchTerm))) ||
+                        (doc.summary && doc.summary.toLowerCase().includes(searchTerm));
+                    
+                    const matchesYear = (!doc.publication_year) || 
+                        (doc.publication_year >= yearFrom && doc.publication_year <= yearTo);
+                    
+                    return matchesSearch && matchesYear;
+                });
+
+                renderDocuments(filtered);
+            }
+
+            // Event listeners para filtros
+            searchInput.addEventListener('input', filterDocuments);
+            yearFromInput.addEventListener('input', filterDocuments);
+            yearToInput.addEventListener('input', filterDocuments);
         });
     </script>
 </body>

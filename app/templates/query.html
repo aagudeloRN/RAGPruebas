@@ -8,6 +8,7 @@
 </head>
 <body>
     <div class="container query-container">
+        <div class="main-background">
         <header>
             <h1>Consultar Base de Conocimiento</h1>
             <p>Haga una pregunta en lenguaje natural a sus documentos.</p>
@@ -17,19 +18,25 @@
             </nav>
         </header>
 
-        <form id="query-form">
+        <div class="query-form">
+            <form id="query-form">
             <div class="form-group">
                 <label for="query-input">Su pregunta:</label>
                 <textarea id="query-input" name="query" rows="3" placeholder="Ej: ¿Cuáles son los principales riesgos globales para 2025?" required></textarea>
             </div>
-            <button type="submit" id="query-btn">Preguntar</button>
+                <button type="submit" id="query-btn" class="btn btn-primary btn-full">
+                    <span class="btn-icon">🤔</span>
+                    Preguntar
+                </button>
         </form>
+        </div>
 
         <div id="results-area" class="results-area" style="display: none;">
             <h2>Respuesta</h2>
             <div id="answer" class="answer-box"></div>
             <h3>Fuentes Utilizadas</h3>
             <div id="sources" class="sources-grid"></div>
+        </div>
         </div>
     </div>
 
@@ -87,7 +94,7 @@
                 answerDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
             } finally {
                 queryBtn.disabled = false;
-                queryBtn.textContent = 'Preguntar';
+                queryBtn.innerHTML = '<span class="btn-icon">🤔</span> Preguntar';
             }
         });
     </script>
