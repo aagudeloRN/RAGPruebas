@@ -41,8 +41,9 @@ class DocumentResponse(DocumentBase):
     status: str
     processing_error: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = {
+        "from_attributes": True
+    }
 
 # Schema para la respuesta del endpoint de status
 class DocumentStatusResponse(BaseModel):
@@ -52,57 +53,15 @@ class DocumentStatusResponse(BaseModel):
 class QueryRequest(BaseModel):
     query: str
 
-class ConversationalQueryRequest(BaseModel):
+class QueryRefinementRequest(BaseModel):
     query: str
-    history: List[List[str]] = [] # [[user_message, bot_response], ...]
 
-class ConversationalQueryRequest(BaseModel):
+class RefinedQuerySuggestion(BaseModel):
     query: str
-    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+    description: str
 
-class ConversationalQueryRequest(BaseModel):
-    query: str
-    history: List[List[str]] = [] # [[user_message, bot_response], ...]
-
-class ConversationalQueryRequest(BaseModel):
-    query: str
-    history: List[List[str]] = [] # [[user_message, bot_response], ...]
-
-class ConversationalQueryRequest(BaseModel):
-    query: str
-    history: List[List[str]] = [] # [[user_message, bot_response], ...]
-
-class ConversationalQueryRequest(BaseModel):
-    query: str
-    history: List[List[str]] = [] # [[user_message, bot_response], ...]
-
-class ConversationalQueryRequest(BaseModel):
-    query: str
-    history: List[List[str]] = [] # [[user_message, bot_response], ...]
-
-class ConversationalQueryRequest(BaseModel):
-    query: str
-    history: List[List[str]] = [] # [[user_message, bot_response], ...]
-
-class ConversationalQueryRequest(BaseModel):
-    query: str
-    history: List[List[str]] = [] # [[user_message, bot_response], ...]
-
-class ConversationalQueryRequest(BaseModel):
-    query: str
-    history: List[List[str]] = [] # [[user_message, bot_response], ...]
-
-class ConversationalQueryRequest(BaseModel):
-    query: str
-    history: List[List[str]] = [] # [[user_message, bot_response], ...]
-
-class ConversationalQueryRequest(BaseModel):
-    query: str
-    history: List[List[str]] = [] # [[user_message, bot_response], ...]
-
-class ConversationalQueryRequest(BaseModel):
-    query: str
-    history: List[List[str]] = [] # [[user_message, bot_response], ...]
+class QueryRefinementResponse(BaseModel):
+    suggestions: List[RefinedQuerySuggestion]
 
 class ConversationalQueryRequest(BaseModel):
     query: str
@@ -112,9 +71,19 @@ class Source(BaseModel):
     id: int
     title: Optional[str]
     publisher: Optional[str]
-    publication_year: Optional[int]
+    publication_year: Optional[str]
     source_url: Optional[str]
+
+class SortByEnum(str, Enum):
+    id = "id"
+    title = "title"
+    publication_year = "publication_year"
+
+class SortOrderEnum(str, Enum):
+    asc = "asc"
+    desc = "desc"
 
 class QueryResponse(BaseModel):
     answer: str
     sources: List[Source]
+    cache_hit: bool = False

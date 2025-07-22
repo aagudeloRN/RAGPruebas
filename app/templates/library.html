@@ -8,116 +8,182 @@
 </head>
 <body>
     <div class="container library-container">
+        <div class="main-background">
         <header>
             <h1>Biblioteca de Documentos</h1>
             <p>Explore y busque en la base de conocimiento.</p>
-            <form id="search-form" class="search-form">
-                <input type="text" id="search-query" name="query" placeholder="Buscar documentos..." value="{{ query or '' }}">
-                <input type="number" id="start-year" name="start_year" placeholder="Año inicio" value="{{ start_year or '' }}">
-                <input type="number" id="end-year" name="end_year" placeholder="Año fin" value="{{ end_year or '' }}">
-                <button type="submit">Buscar</button>
-            </form>
             <nav class="main-nav">
                 <a href="/" class="nav-button">Cargar Nuevo Documento</a>
                 <a href="/query" class="nav-button">Consultar Información (RAG)</a>
             </nav>
         </header>
 
+            <div class="search-filters">
+                <div class="filters-grid">
+                    <div class="form-group">
+                        <label for="search-input">Buscar</label>
+                        <input type="text" id="search-input" placeholder="Título, resumen, palabras clave...">
+                    </div>
+                    <div class="form-group">
+                        <label for="publisher-filter">Publicador</label>
+                        <input type="text" id="publisher-filter" placeholder="Ej: Banco Mundial" list="publisher-suggestions">
+                        <datalist id="publisher-suggestions"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label for="year-from">Año desde</label>
+                        <input type="number" id="year-from" placeholder="2020" min="1900" max="2030">
+                    </div>
+                    <div class="form-group">
+                        <label for="year-to">Año hasta</label>
+                        <input type="number" id="year-to" placeholder="2024" min="1900" max="2030">
+                    </div>
+                    <div class="form-group">
+                        <label for="sort-by">Ordenar por</label>
+                        <select id="sort-by">
+                            <option value="id">ID</option>
+                            <option value="title">Título</option>
+                            <option value="publication_year">Año de Publicación</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="sort-order">Orden</label>
+                        <select id="sort-order">
+                            <option value="desc">Descendente</option>
+                            <option value="asc">Ascendente</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
         <main id="document-grid" class="document-grid">
             <!-- Las tarjetas de documentos se insertarán aquí por JS -->
         </main>
+        </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             const grid = document.getElementById('document-grid');
-            const searchQueryInput = document.getElementById('search-query');
-            const startYearInput = document.getElementById('start-year');
-            const endYearInput = document.getElementById('end-year');
-            const searchForm = document.getElementById('search-form');
+            const searchInput = document.getElementById('search-input');
+            const publisherFilterInput = document.getElementById('publisher-filter');
+            const yearFromInput = document.getElementById('year-from');
+            const yearToInput = document.getElementById('year-to');
+            const sortBySelect = document.getElementById('sort-by');
+            const sortOrderSelect = document.getElementById('sort-order');
 
-            const fetchDocuments = async (query = null, startYear = null, endYear = null) => {
-                grid.innerHTML = ''; // Limpiar resultados anteriores
-                let url = '/documents/';
+            async function fetchAndRenderDocuments() {
+                grid.innerHTML = '<div class="loading-message">Cargando documentos...</div>';
+
                 const params = new URLSearchParams();
-                if (query) {
-                    params.append('query', query);
-                }
-                if (startYear) {
-                    params.append('start_year', startYear);
-                }
-                if (endYear) {
-                    params.append('end_year', endYear);
-                }
-                if (params.toString()) {
-                    url += `?${params.toString()}`;
-                }
+                const keyword = searchInput.value.trim();
+                const publisher = publisherFilterInput.value.trim();
+                const yearFrom = yearFromInput.value.trim();
+                const yearTo = yearToInput.value.trim();
+                const sortBy = sortBySelect.value;
+                const sortOrder = sortOrderSelect.value;
+
+                if (keyword) params.append('keyword', keyword);
+                if (publisher) params.append('publisher_filter', publisher);
+                if (yearFrom) params.append('year_start', yearFrom);
+                if (yearTo) params.append('year_end', yearTo);
+                params.append('sort_by', sortBy);
+                params.append('sort_order', sortOrder);
 
                 try {
-                    const response = await fetch(url);
+                    const response = await fetch(`/documents/?${params.toString()}`);
                     if (!response.ok) {
                         throw new Error('No se pudieron cargar los documentos.');
                     }
                     const documents = await response.json();
 
-                    if (documents.length === 0) {
-                        grid.innerHTML = '<p class="empty-library">No hay documentos en la biblioteca que coincidan con su búsqueda. <a href="/library">Ver todos los documentos</a>.</p>';
-                        return;
-                    }
-
-                    documents.forEach(doc => {
-                        const card = document.createElement('div');
-                        card.className = 'document-card';
-                        
-                        const keywordsHTML = doc.keywords ? doc.keywords.map(k => `<span class="keyword-tag">${k}</span>`).join('') : 'No disponibles';
-
-                        card.innerHTML = `
-                            <div class="card-image-container">
-                                <img src="${doc.preview_image_url || 'https://via.placeholder.com/400x250.png?text=Sin+Vista+Previa'}" alt="Vista previa de ${doc.title}">
-                                <span class="status-badge status-${doc.status}">${doc.status}</span>
-                            </div>
-                            <div class="card-content">
-                                <h3 class="card-title">${doc.title || 'Título no disponible'}</h3>
-                                <p class="card-publisher">${doc.publisher || 'Publicador no disponible'} - ${doc.publication_year || 'Año no disponible'}</p>
-                                <p class="card-summary">${doc.summary || 'Resumen no disponible.'}</p>
-                                <div class="card-keywords">
-                                    <strong>Palabras clave:</strong>
-                                    <div>${keywordsHTML}</div>
-                                </div>
-                                ${doc.source_url ? `<a href="${doc.source_url}" target="_blank" class="card-link">Ver fuente original</a>` : ''}
-                            </div>
-                        `;
-                        grid.appendChild(card);
-                    });
+                    renderDocuments(documents);
 
                 } catch (error) {
-                    grid.innerHTML = `<p class="error">Error al cargar la biblioteca: ${error.message}</p>`;
+                    grid.innerHTML = `<div class="empty-library"><h3>❌ Error</h3><p>Error al cargar la biblioteca: ${error.message}</p></div>`;
                 }
-            };
+            }
 
-            // Cargar documentos al inicio, con la query y años si existen en la URL
-            const urlParams = new URLSearchParams(window.location.search);
-            const initialQuery = urlParams.get('query');
-            const initialStartYear = urlParams.get('start_year');
-            const initialEndYear = urlParams.get('end_year');
-            fetchDocuments(initialQuery, initialStartYear, initialEndYear);
+            // Función para renderizar documentos
+            function renderDocuments(documents) {
+                grid.innerHTML = '';
+                
+                if (documents.length === 0) {
+                    grid.innerHTML = `
+                        <div class="empty-library">
+                            <h3>🔍 Sin Resultados</h3>
+                            <p>No se encontraron documentos que coincidan con los filtros.</p>
+                        </div>
+                    `;
+                    return;
+                }
 
-            // Manejar el envío del formulario de búsqueda
-            searchForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                const query = searchQueryInput.value;
-                const startYear = startYearInput.value;
-                const endYear = endYearInput.value;
+                documents.forEach(doc => {
+                    const card = document.createElement('div');
+                    card.className = 'document-card';
+                    
+                    const keywordsHTML = doc.keywords ? doc.keywords.map(k => `<span class="keyword-tag">${k}</span>`).join('') : 'No disponibles';
 
-                const params = new URLSearchParams();
-                if (query) params.append('query', query);
-                if (startYear) params.append('start_year', startYear);
-                if (endYear) params.append('end_year', endYear);
+                    card.innerHTML = `
+                        <div class="card-image-container">
+                            <img src="${doc.preview_image_url || 'https://via.placeholder.com/400x250.png?text=Sin+Vista+Previa'}" alt="Vista previa de ${doc.title}">
+                            <span class="status-badge status-${doc.status}">${doc.status}</span>
+                        </div>
+                        <div class="card-content">
+                            <h3 class="card-title">${doc.title || 'Título no disponible'}</h3>
+                            <p class="card-publisher">${doc.publisher || 'Publicador no disponible'} - ${doc.publication_year || 'Año no disponible'}</p>
+                            <p class="card-summary">${doc.summary || 'Resumen no disponible.'}</p>
+                            <div class="card-keywords">
+                                <strong>Palabras clave:</strong>
+                                <div>${keywordsHTML}</div>
+                            </div>
+                            ${doc.source_url ? `<a href="${doc.source_url}" target="_blank" class="card-link">Ver fuente original</a>` : ''}
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            }
 
-                // Actualizar la URL sin recargar la página
-                history.pushState(null, '', `/library${params.toString() ? '?' + params.toString() : ''}`);
-                fetchDocuments(query, startYear, endYear);
+            // Event listeners para filtros y ordenación
+            searchInput.addEventListener('input', fetchAndRenderDocuments);
+            publisherFilterInput.addEventListener('input', fetchAndRenderDocuments);
+            yearFromInput.addEventListener('input', fetchAndRenderDocuments);
+            yearToInput.addEventListener('input', fetchAndRenderDocuments);
+            sortBySelect.addEventListener('change', fetchAndRenderDocuments);
+            sortOrderSelect.addEventListener('change', fetchAndRenderDocuments);
+
+            // Autocompletado para publicadores
+            const publisherSuggestionsDatalist = document.getElementById('publisher-suggestions');
+            let autocompleteTimeout;
+
+            publisherFilterInput.addEventListener('input', () => {
+                clearTimeout(autocompleteTimeout);
+                const searchTerm = publisherFilterInput.value.trim();
+                if (searchTerm.length < 2) { // Solo buscar si hay al menos 2 caracteres
+                    publisherSuggestionsDatalist.innerHTML = '';
+                    return;
+                }
+
+                autocompleteTimeout = setTimeout(async () => {
+                    try {
+                        const response = await fetch(`/publishers/autocomplete?search_term=${encodeURIComponent(searchTerm)}`);
+                        if (!response.ok) {
+                            throw new Error('Error al cargar sugerencias de publicadores.');
+                        }
+                        const suggestions = await response.json();
+                        publisherSuggestionsDatalist.innerHTML = '';
+                        suggestions.forEach(publisher => {
+                            const option = document.createElement('option');
+                            option.value = publisher;
+                            publisherSuggestionsDatalist.appendChild(option);
+                        });
+                    } catch (error) {
+                        console.error('Error en autocompletado de publicadores:', error);
+                    }
+                }, 300); // Pequeño retraso para evitar muchas peticiones
             });
+
+            // Cargar documentos al inicio
+            fetchAndRenderDocuments();
         });
     </script>
 </body>

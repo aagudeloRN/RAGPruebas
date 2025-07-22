@@ -8,6 +8,7 @@
 </head>
 <body>
     <div class="container query-container">
+        <div class="main-background">
         <header>
             <h1>Consultar Base de Conocimiento</h1>
             <p>Haga una pregunta en lenguaje natural a sus documentos.</p>
@@ -17,59 +18,125 @@
             </nav>
         </header>
 
-        <form id="query-form">
+        <div class="query-form" style="border: 2px solid red;"> <!-- Temporary inline style for testing CSS loading -->
             <div class="form-group">
                 <label for="query-input">Su pregunta:</label>
-                <textarea id="query-input" name="query" rows="3" placeholder="Ej: ¿Cuáles son los principales riesgos globales para 2025?" required></textarea>
+                <textarea id="query-input" name="query" rows="3" placeholder="Ej: ¿Cuáles son los principales riesgos globales para 2025?"></textarea>
             </div>
-            <button type="submit" id="query-btn">Preguntar</button>
-        </form>
+            <div class="button-group center-button">
+                <button type="button" id="refine-query-btn" class="btn btn-secondary">
+                    <span class="btn-icon">✨</span>
+                    Refinar Pregunta
+                </button>
+            </div>
+        </div>
+
+        <div id="suggestions-area" class="suggestions-area" style="display: none;">
+            <h3>Sugerencias de Pregunta:</h3>
+            <div id="suggestions-list" class="suggestions-list"></div>
+        </div>
 
         <div id="results-area" class="results-area" style="display: none;">
-            <h2>Respuesta</h2>
-            <div id="answer" class="answer-box"></div>
+            <div class="results-header">
+                <h2>Respuesta</h2>
+                <button id="copy-answer-btn" class="btn btn-icon-only" title="Copiar respuesta">
+                    <span class="btn-icon">📋</span>
+                </button>
+                <span id="copy-message" class="copy-message" style="display: none;">Copiado!</span>
+            </div>
+            <div id="answer-box" class="answer-box" style="white-space: normal;"></div>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        function renderMarkdown(md) {
+            if (md) {
+                document.getElementById('answer-box').innerHTML = marked.parse(md);
+            }
+        }
+    </script>
             <h3>Fuentes Utilizadas</h3>
             <div id="sources" class="sources-grid"></div>
+        </div>
         </div>
     </div>
 
     <script>
-        const form = document.getElementById('query-form');
-        const queryBtn = document.getElementById('query-btn');
+        const queryInput = document.getElementById('query-input');
+        const refineQueryBtn = document.getElementById('refine-query-btn');
+        const suggestionsArea = document.getElementById('suggestions-area');
+        const suggestionsList = document.getElementById('suggestions-list');
         const resultsArea = document.getElementById('results-area');
-        const answerDiv = document.getElementById('answer');
+        const answerBox = document.getElementById('answer-box'); // Corregido: Usar answer-box
         const sourcesDiv = document.getElementById('sources');
+        const copyAnswerBtn = document.getElementById('copy-answer-btn');
+        const copyMessage = document.getElementById('copy-message');
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const queryInput = document.getElementById('query-input');
-            const query = queryInput.value.trim();
+        let activeQueryButton = null; // To keep track of the button that triggered the last RAG query
 
-            if (!query) return;
+        function resetButtons() {
+            refineQueryBtn.disabled = false;
+            refineQueryBtn.innerHTML = '<span class="btn-icon">✨</span> Refinar Pregunta';
+            // Remove active class from all suggestion buttons
+            document.querySelectorAll('.btn-suggestion').forEach(btn => {
+                btn.classList.remove('active');
+                btn.classList.remove('cached-response'); // Also remove cached-response class
+            });
+            if (activeQueryButton) {
+                activeQueryButton.classList.remove('active');
+                activeQueryButton.classList.remove('cached-response'); // Also remove cached-response class
+                activeQueryButton = null; // Clear active button
+            }
+        }
 
-            queryBtn.disabled = true;
-            queryBtn.textContent = 'Pensando...';
+        function setActiveButton(button) {
+            resetButtons(); // Reset all buttons first
+            if (button) {
+                button.classList.add('active');
+                activeQueryButton = button;
+            }
+        }
+
+        // Function to handle RAG query submission
+        async function submitRAGQuery(queryToSubmit, sourceButton) {
+            console.log(`[DEBUG] submitRAGQuery llamado con: "${queryToSubmit}"`);
+            if (!queryToSubmit) {
+                console.error("[DEBUG] La consulta está vacía. Abortando.");
+                return;
+            }
+
+            // Set active state and disable the clicked button
+            setActiveButton(sourceButton);
+            sourceButton.disabled = true;
+            sourceButton.dataset.originalText = sourceButton.innerHTML; // Store original text
+            sourceButton.innerHTML = 'Pensando...';
+
             resultsArea.style.display = 'block';
-            answerDiv.innerHTML = '<p>Generando respuesta...</p>';
+            answerBox.innerHTML = '<p>Generando respuesta...</p>'; // Corregido: Usar answerBox
             sourcesDiv.innerHTML = '';
+            copyMessage.style.display = 'none'; // Hide copy message
 
             try {
+                console.log("[DEBUG] Realizando fetch a /query/...");
                 const response = await fetch('/query/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: query })
+                    body: JSON.stringify({ query: queryToSubmit })
                 });
 
+                console.log(`[DEBUG] Respuesta recibida del servidor con estado: ${response.status}`);
                 if (!response.ok) {
                     const err = await response.json();
+                    console.error("[DEBUG] Error en la respuesta:", err);
                     throw new Error(err.detail || 'Error en el servidor.');
                 }
 
                 const data = await response.json();
+                console.log("[DEBUG] Datos recibidos:", data);
                 
-                answerDiv.innerText = data.answer;
+                // Usar el div correcto y renderizar Markdown
+                renderMarkdown(data.answer);
 
                 if (data.sources && data.sources.length > 0) {
+                    sourcesDiv.innerHTML = ''; // Clear previous sources
                     data.sources.forEach(source => {
                         const sourceCard = document.createElement('a');
                         sourceCard.className = 'source-card';
@@ -83,11 +150,94 @@
                     sourcesDiv.innerHTML = '<p>No se encontraron fuentes específicas para esta respuesta.</p>';
                 }
 
+                // Add cached-response class if it's a cache hit
+                if (data.cache_hit) {
+                    sourceButton.classList.add('cached-response');
+                }
+
             } catch (error) {
-                answerDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+                console.error("[DEBUG] Error en el bloque try/catch:", error);
+                answerBox.innerHTML = `<p class="error">Error: ${error.message}</p>`; // Corregido: Usar answerBox
             } finally {
-                queryBtn.disabled = false;
-                queryBtn.textContent = 'Preguntar';
+                console.log("[DEBUG] Bloque finally ejecutado.");
+                // Restore the clicked button's state
+                sourceButton.disabled = false;
+                sourceButton.innerHTML = sourceButton.dataset.originalText;
+            }
+        }
+
+        // Event listener for Refine Question button
+        refineQueryBtn.addEventListener('click', async () => {
+            const query = queryInput.value.trim();
+            if (!query) return;
+
+            resetButtons();
+            refineQueryBtn.disabled = true;
+            refineQueryBtn.textContent = 'Refinando...';
+            suggestionsList.innerHTML = ''; // Clear previous suggestions
+            suggestionsArea.style.display = 'none'; // Hide suggestions area initially
+
+            try {
+                const response = await fetch('/query/refine', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || 'Error al refinar la pregunta.');
+                }
+
+                const data = await response.json();
+                if (data.suggestions && data.suggestions.length > 0) {
+                    suggestionsArea.style.display = 'block';
+                    data.suggestions.forEach(suggestion => {
+                        const suggestionContainer = document.createElement('div');
+                        suggestionContainer.className = 'suggestion-item';
+
+                        const suggestionBtn = document.createElement('button');
+                        suggestionBtn.type = 'button';
+                        suggestionBtn.className = 'btn btn-suggestion';
+                        suggestionBtn.textContent = suggestion.query;
+                        suggestionBtn.dataset.originalText = suggestion.query; // Store original text
+                        suggestionBtn.addEventListener('click', () => {
+                            queryInput.value = suggestion.query; // Set input to suggested query
+                            submitRAGQuery(suggestion.query, suggestionBtn); // Submit the RAG query
+                        });
+
+                        const suggestionDescription = document.createElement('p');
+                        suggestionDescription.className = 'suggestion-description';
+                        suggestionDescription.textContent = suggestion.description;
+
+                        suggestionContainer.appendChild(suggestionBtn);
+                        suggestionContainer.appendChild(suggestionDescription);
+                        suggestionsList.appendChild(suggestionContainer);
+                    });
+                } else {
+                    suggestionsArea.style.display = 'none';
+                }
+
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+                suggestionsArea.style.display = 'none';
+            } finally {
+                refineQueryBtn.disabled = false;
+                refineQueryBtn.innerHTML = '<span class="btn-icon">✨</span> Refinar Pregunta';
+            }
+        });
+
+        // Copy to clipboard functionality
+        copyAnswerBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(answerDiv.innerText);
+                copyMessage.style.display = 'inline';
+                setTimeout(() => {
+                    copyMessage.style.display = 'none';
+                }, 2000); // Hide after 2 seconds
+            } catch (err) {
+                console.error('Failed to copy: ', err);
+                alert('Error al copiar la respuesta.');
             }
         });
     </script>

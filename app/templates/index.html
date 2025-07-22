@@ -8,9 +8,10 @@
 </head>
 <body>
     <div class="container">
+        <div class="main-background">
         <header>
-            <h1>Base de Conocimiento: {{ kb_name }}</h1>
-            <p>Cargue un documento PDF para analizarlo y añadirlo a esta base de conocimiento.</p>
+            <h1>Sistema de Vigilancia e Inteligencia</h1>
+            <p>Cargue un documento PDF para analizarlo y añadirlo a la base de conocimiento.</p>
         </header>
 
         <nav class="main-nav">
@@ -20,89 +21,44 @@
 
         <div id="message-area"></div>
 
-        <form id="upload-form" action="/upload-document/" method="post" enctype="multipart/form-data">
-            <div class="form-group">
-                <label for="file">Seleccionar archivo PDF</label>
-                <input type="file" id="file" name="file" accept="application/pdf" required>
-            </div>
-
-            <button type="submit" id="submit-btn">Cargar Documento</button>
-        </form>
-
-        <div id="metadata-section" class="hidden">
-            <h2>Validar Metadatos del Documento</h2>
-            <p>Por favor, revise y complete los metadatos extraídos automáticamente. Asegúrese de añadir la URL de origen si no se detectó.</p>
-            <form id="metadata-form">
-                <input type="hidden" id="document_id" name="document_id">
-                <input type="hidden" id="pdf_path_hidden" name="pdf_path">
-
-                <div class="form-group">
-                    <label for="title">Título del Documento</label>
-                    <input type="text" id="title" name="title" placeholder="Ej: Global Risks Report 2023">
+        <div class="form-container">
+            <form id="upload-form" action="/upload-document/" method="post" enctype="multipart/form-data">
+                <div id="drop-zone" class="drop-zone">
+                    <p>Arrastre y suelte un archivo PDF aquí o haga clic para seleccionar uno.</p>
+                    <input type="file" id="file" name="file" accept="application/pdf" required hidden>
                 </div>
-                <div class="form-group">
-                    <label for="publisher">Publicado por (Autor/Organización)</label>
-                    <input type="text" id="publisher" name="publisher" placeholder="Ej: World Economic Forum">
-                </div>
-                <div class="form-group">
-                    <label for="publication_year">Año de Publicación</label>
-                    <input type="number" id="publication_year" name="publication_year" placeholder="Ej: 2023">
-                </div>
-                <div class="form-group">
-                    <label for="source_url">URL de Origen</label>
-                    <input type="url" id="source_url" name="source_url" placeholder="https://..." required>
-                </div>
-                <div class="form-group">
-                    <label for="language">Idioma</label>
-                    <select id="language" name="language">
-                        <option value="es">Español</option>
-                        <option value="en">Inglés</option>
-                        <option value="fr">Francés</option>
-                        <option value="pt">Portugués</option>
-                        <option value="de">Alemán</option>
-                        <option value="zh">Chino</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="summary">Resumen</label>
-                    <textarea id="summary" name="summary" rows="5" placeholder="Resumen del documento"></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="keywords">Palabras Clave (separadas por coma)</label>
-                    <input type="text" id="keywords" name="keywords" placeholder="Ej: IA, ética, regulación">
-                </div>
-
-                <button type="submit" id="process-btn">Confirmar y Procesar</button>
             </form>
+            <div id="loading-indicator" style="display: none;">
+                <p>Extrayendo metadatos, por favor espere...</p>
+                <div class="loader"></div>
+            </div>
+        </div>
         </div>
     </div>
 
     <script>
-        const uploadForm = document.getElementById('upload-form');
-        const metadataSection = document.getElementById('metadata-section');
-        const metadataForm = document.getElementById('metadata-form');
+        const form = document.getElementById('upload-form');
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file');
         const messageArea = document.getElementById('message-area');
-        const uploadBtn = document.getElementById('submit-btn');
-        const processBtn = document.getElementById('process-btn');
+        const loadingIndicator = document.getElementById('loading-indicator');
 
-        // Función para mostrar mensajes
         const showMessage = (text, type) => {
             messageArea.innerHTML = `<div class="message ${type}">${text}</div>`;
         };
 
-        uploadForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const fileInput = document.getElementById('file');
-            if (!fileInput.files.length) {
-                showMessage('Por favor, seleccione un archivo PDF.', 'error');
+        const handleFileSelect = async (file) => {
+            if (!file || file.type !== 'application/pdf') {
+                showMessage('Por favor, seleccione un archivo PDF válido.', 'error');
                 return;
             }
 
-            uploadBtn.disabled = true;
-            uploadBtn.textContent = 'Extrayendo metadatos...';
-            showMessage('Enviando archivo y extrayendo metadatos. Esto puede tardar unos segundos...', 'info');
+            dropZone.style.display = 'none';
+            loadingIndicator.style.display = 'block';
+            showMessage('Archivo seleccionado. Extrayendo metadatos...', 'info');
 
-            const formData = new FormData(uploadForm);
+            const formData = new FormData();
+            formData.append('file', file);
 
             try {
                 const response = await fetch('/upload-document/', {
@@ -116,75 +72,43 @@
                 }
 
                 const result = await response.json();
-                const metadata = result.metadata;
-
-                // Rellenar el formulario de metadatos
-                document.getElementById('document_id').value = result.temp_id; // Cambiado a temp_id
-                document.getElementById('pdf_path_hidden').value = result.pdf_path;
-                document.getElementById('title').value = metadata.title || '';
-                document.getElementById('publisher').value = metadata.publisher || '';
-                document.getElementById('publication_year').value = metadata.publication_year || '';
-                document.getElementById('source_url').value = metadata.source_url || '';
-                document.getElementById('language').value = metadata.language || 'es';
-                document.getElementById('summary').value = metadata.summary || '';
-                document.getElementById('keywords').value = (metadata.keywords && metadata.keywords.length > 0) ? metadata.keywords.join(', ') : '';
-
-                // Mostrar la sección de metadatos y ocultar el formulario de subida
-                uploadForm.classList.add('hidden');
-                metadataSection.classList.remove('hidden');
-                showMessage('Metadatos extraídos. Por favor, revise y confirme.', 'success');
+                sessionStorage.setItem('validationMetadata', JSON.stringify(result.metadata));
+                window.location.href = `/validate-metadata/${result.temp_id}`;
 
             } catch (error) {
-                showMessage(`Error al extraer metadatos: ${error.message}`, 'error');
-                uploadBtn.disabled = false;
-                uploadBtn.textContent = 'Cargar Documento';
+                showMessage(`Error: ${error.message}`, 'error');
+                loadingIndicator.style.display = 'none';
+                dropZone.style.display = 'block';
+            }
+        };
+
+        // Abrir selector de archivo al hacer clic en la zona
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        // Manejar cambio en el input de archivo
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                handleFileSelect(fileInput.files[0]);
             }
         });
 
-        metadataForm.addEventListener('submit', async (e) => {
+        // Manejar eventos de drag & drop
+        dropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
 
-            processBtn.disabled = true;
-            processBtn.textContent = 'Procesando documento...';
-            showMessage('Confirmando metadatos y comenzando procesamiento pesado...', 'info');
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+        });
 
-            const tempId = document.getElementById('document_id').value; // Ahora es temp_id
-            const pdfPath = document.getElementById('pdf_path_hidden').value;
-            const formData = new FormData(metadataForm);
-            const data = Object.fromEntries(formData.entries());
-            
-            // Convertir keywords de string a array
-            if (data.keywords) {
-                data.keywords = data.keywords.split(',').map(kw => kw.trim()).filter(kw => kw.length > 0);
-            } else {
-                data.keywords = [];
-            }
-
-            // Eliminar document_id y pdf_path del objeto de datos, ya que se pasan en la URL o no son parte del modelo
-            delete data.document_id; // Ya no es necesario en el body
-            delete data.pdf_path; // Ya no es necesario en el body
-
-            try {
-                const response = await fetch(`/process-document/${tempId}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(data)
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || 'Error en el servidor.');
-                }
-
-                showMessage('Documento procesado con éxito. Redirigiendo a la biblioteca.', 'success');
-                window.location.href = '/library';
-
-            } catch (error) {
-                showMessage(`Error al procesar el documento: ${error.message}`, 'error');
-                processBtn.disabled = false;
-                processBtn.textContent = 'Confirmar y Procesar';
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileSelect(e.dataTransfer.files[0]);
             }
         });
     </script>
