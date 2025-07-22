@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, BackgroundTasks, Request, Response
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, BackgroundTasks, Request, Response, Query
 import os # Import os for file operations
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -8,22 +8,33 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 import uuid # Import uuid for temporary IDs
 
+from app.core.config import settings # <-- AÑADIR ESTA LÍNEA
+
 # Almacenamiento temporal en memoria para PDFs y metadatos antes de la confirmación
 temp_pdf_storage = {}
 
 from .services.pipeline import process_pdf_pipeline, extract_metadata_pipeline
-from .services.rag_service import perform_rag_query, semantic_search_documents
-from .schemas.document import DocumentResponse, LanguageEnum, DocumentStatusResponse, QueryRequest, QueryResponse, DocumentCreateRequest
-from .db.crud import create_document, update_document_processing_results, get_document_status, get_documents
+from .services.rag_service import perform_rag_query, semantic_search_documents, get_refined_query_suggestions
+from .services.query_orchestrator import QueryOrchestrator
+from .schemas.document import (
+    DocumentResponse, DocumentStatusResponse, QueryRequest, 
+    QueryResponse, DocumentCreateRequest, QueryRefinementRequest, 
+    QueryRefinementResponse, SortByEnum, SortOrderEnum
+)
+from .db.crud import create_document, update_document_processing_results, get_document_status, get_documents, get_unique_publishers
 from .db.session import get_db, engine
 from .models.document import Document # Asegúrate que este archivo ahora existe en app/models/document.py
 from .db.base import Base # Apuntamos al nuevo archivo base.py
+from .models.qa_cache import QACache
 
 # Configurar logging básico
 logging.basicConfig(level=logging.INFO)
 
 
 Base.metadata.create_all(bind=engine)
+
+# Crear una instancia única del orquestador para ser usada en toda la aplicación
+query_orchestrator = QueryOrchestrator()
 
 app = FastAPI(
     title="Sistema RAG de Vigilancia e Inteligencia",
@@ -102,28 +113,47 @@ def read_document_status(document_id: int, db: Session = Depends(get_db)):
     return {"status": status}
 
 @app.get("/documents/", response_model=List[DocumentResponse])
-def read_documents(request: Request, skip: int = 0, limit: int = 100, query: Optional[str] = None, db: Session = Depends(get_db)) -> List[DocumentResponse]:
-    """Recupera una lista de todos los documentos procesados, opcionalmente filtrados por una consulta semántica."""
+def read_documents(
+    request: Request,
+    skip: int = 0,
+    limit: int = 100,
+    query: Optional[str] = None,
+    sort_by: Optional[SortByEnum] = Query(SortByEnum.id),
+    sort_order: Optional[SortOrderEnum] = Query(SortOrderEnum.desc),
+    keyword: Optional[str] = Query(None),
+    publisher_filter: Optional[str] = Query(None),
+    year_start: Optional[int] = Query(None),
+    year_end: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+) -> List[DocumentResponse]:
+    """Recupera una lista de todos los documentos procesados, opcionalmente filtrados y ordenados."""
     selected_kb = request.cookies.get("selected_kb_namespace", "default")
     if query:
         documents = semantic_search_documents(query=query, namespace=selected_kb, db=db)
         return documents
     else:
-        documents = get_documents(db, skip=skip, limit=limit)
+        documents = get_documents(
+            db,
+            skip=skip,
+            limit=limit,
+            sort_by=sort_by.value if sort_by else None,
+            sort_order=sort_order.value if sort_order else None,
+            keyword=keyword,
+            publisher_filter=publisher_filter,
+            year_start=year_start,
+            year_end=year_end
+        )
         return documents
 
-@app.get("/validate-metadata/{document_id}", response_class=HTMLResponse)
-async def validate_metadata_page(document_id: int, request: Request, db: Session = Depends(get_db)):
-    """Sirve la página para validar y completar los metadatos de un documento."""
-    document = get_document(db, document_id)
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+@app.get("/validate-metadata/{temp_id}", response_class=HTMLResponse)
+async def validate_metadata_page(temp_id: str, request: Request):
+    """Sirve la página para validar y completar los metadatos de un documento usando un ID temporal."""
+    # Verificar si el ID temporal es válido
+    if temp_id not in temp_pdf_storage:
+        raise HTTPException(status_code=404, detail="Documento temporal no encontrado o la sesión ha expirado.")
     
-    # Asegurarse de que el documento está en el estado correcto para validación
-    if document.status != "pending_metadata":
-        raise HTTPException(status_code=400, detail="Document is not in pending_metadata state.")
-
-    return templates.TemplateResponse("validate_metadata.html", {"request": request, "document": document})
+    # Pasamos el temp_id a la plantilla. Los metadatos se cargarán desde sessionStorage en el lado del cliente.
+    return templates.TemplateResponse("validate_metadata.html", {"request": request, "temp_id": temp_id})
 
 @app.post("/process-document/{temp_id}", response_model=DocumentResponse, status_code=202)
 async def process_document(
@@ -174,11 +204,42 @@ async def read_query_page(request: Request):
     """Sirve la página de consulta RAG."""
     return templates.TemplateResponse("query.html", {"request": request})
 
+@app.get("/publishers/autocomplete", response_model=List[str])
+async def get_publishers_autocomplete(
+    search_term: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Obtiene sugerencias de autocompletado para publicadores."""
+    publishers = get_unique_publishers(db, search_term=search_term)
+    return publishers
+
+@app.post("/query/refine", response_model=QueryRefinementResponse)
+async def refine_query(refine_request: QueryRefinementRequest):
+    """Recibe una consulta y devuelve sugerencias de refinamiento generadas por un LLM."""
+    try:
+        suggestions = get_refined_query_suggestions(query=refine_request.query)
+        return {"suggestions": suggestions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al refinar la consulta: {e}")
+
 @app.post("/query/", response_model=QueryResponse)
 def handle_query(request: Request, query_request: QueryRequest):
-    """Maneja una consulta RAG del usuario."""
+    """Maneja una consulta del usuario utilizando el orquestador."""
     try:
-        selected_kb = request.cookies.get("selected_kb_namespace", "general")
-        return perform_rag_query(query=query_request.query, namespace=selected_kb)
+        selected_kb = request.cookies.get("selected_kb_namespace", "default")
+        result = query_orchestrator.decide_and_execute(query=query_request.query, kb_id=selected_kb)
+        
+        if isinstance(result, QueryResponse):
+            return result
+        else:
+            # Esto no debería ocurrir si el orquestador siempre devuelve QueryResponse
+            logging.error(f"Tipo de respuesta inesperado del orquestador: {type(result)} - {result}")
+            raise HTTPException(status_code=500, detail="Error interno: El orquestador devolvió un tipo de respuesta inesperado.")
+
+    except HTTPException as e:
+        # Re-lanzar HTTPExceptions directamente
+        raise e
     except Exception as e:
+        # Capturar cualquier otra excepción inesperada
+        logging.error(f"Error inesperado en handle_query: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error al procesar la consulta: {e}")

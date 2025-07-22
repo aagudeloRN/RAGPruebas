@@ -1,4 +1,13 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
+import os
+
+# Cargar explícitamente el archivo .env desde la raíz del proyecto
+# Esto asegura que se encuentre sin importar desde dónde se inicie el servidor.
+# El argumento `override=True` fuerza a que los valores del .env reemplacen
+# a cualquier variable de entorno del sistema con el mismo nombre.
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+load_dotenv(dotenv_path=dotenv_path, override=True)
 
 class Settings(BaseSettings):
     DATABASE_URL: str
@@ -9,6 +18,8 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: str
     CLOUDINARY_API_SECRET: str
     COHERE_API_KEY: str
+
+    
 
     # --- Variables con valores por defecto ---
     # Estos valores pueden ser sobrescritos por el archivo .env
