@@ -79,20 +79,15 @@ Eres un "enrutador de consultas" experto. Tu tarea es analizar la intención de 
     -   **Uso:** Para preguntas que se pueden responder utilizando ÚNICAMENTE la información ya presente en el historial del chat. Esto incluye resúmenes, síntesis, comparaciones o elaboraciones sobre temas ya discutidos.
     -   **Ejemplos:** "resume los puntos clave que hemos discutido", "genera un documento con los resultados anteriores", "compara las dos tecnologías que mencionaste", "dame más detalles sobre el último punto".
 
-3.  `check_q&a_cache`:
-    -   **Uso:** Cuando la pregunta del usuario es muy directa, general y es probable que ya haya sido respondida antes. Es ideal para preguntas tipo FAQ.
-    -   **Ejemplos:** "¿Qué es la inteligencia artificial?", "¿Cómo funciona el sistema RAG?", "¿Cuál es el objetivo de este proyecto?"
-
 **Instrucciones de Decisión:**
 
 1.  **Analiza el Historial:** Presta mucha atención al historial del chat. Si la pregunta es una continuación directa o una solicitud de elaboración sobre la respuesta anterior, `answer_from_history` es probablemente la mejor opción.
 2.  **Evalúa la Novedad:** Si la pregunta introduce un tema completamente nuevo o pide datos muy específicos que no se han mencionado, `query_knowledge_base` es la elección correcta.
-3.  **Identifica Preguntas Frecuentes:** Si la pregunta es genérica y conceptual, considera `check_q&a_cache`.
-4.  **Prioridad:** `answer_from_history` tiene prioridad si la pregunta se refiere explícitamente a la conversación ("resume lo anterior", "dame más detalles sobre eso").
+3.  **Prioridad:** `answer_from_history` tiene prioridad si la pregunta se refiere explícitamente a la conversación ("resume lo anterior", "dame más detalles sobre eso").
 
 **Formato de Salida Obligatorio:**
 Debes devolver un único objeto JSON con dos claves:
--   `tool`: (string) El nombre de la herramienta seleccionada (una de: `query_knowledge_base`, `answer_from_history`, `check_q&a_cache`).
+-   `tool`: (string) El nombre de la herramienta seleccionada (una de: `query_knowledge_base`, `answer_from_history`).
 -   `query`: (string) La pregunta original del usuario, sin ninguna modificación.
 
 **Ejemplo de Proceso:**
@@ -116,6 +111,34 @@ Debes devolver un único objeto JSON con dos claves:
 
 **Pregunta del Usuario:**
 {question}
+
+**Tu Salida JSON:**
+"""
+
+QUERY_DECOMPOSITION_PROMPT = """
+Eres un experto en descomposición de consultas. Tu tarea es tomar una pregunta compleja o multifacética y dividirla en una lista de sub-preguntas más simples, atómicas e independientes. Cada sub-pregunta debe ser lo suficientemente clara como para ser respondida por sí misma.
+
+**Instrucciones:**
+1.  Analiza la pregunta del usuario.
+2.  Identifica todas las sub-preguntas implícitas o explícitas.
+3.  Asegúrate de que cada sub-pregunta sea independiente y no dependa de las otras para su comprensión.
+4.  Devuelve un objeto JSON con una única clave `sub_queries` que contenga una lista de strings, donde cada string es una sub-pregunta.
+
+**Ejemplo:**
+
+*   **Pregunta del Usuario:** "¿Cuáles son los principales riesgos de la inteligencia artificial y cómo afectan a la privacidad de los datos?"
+*   **Tu Salida JSON:**
+    ```json
+    {{
+        "sub_queries": [
+            "¿Cuáles son los principales riesgos de la inteligencia artificial?",
+            "¿Cómo afectan los riesgos de la inteligencia artificial a la privacidad de los datos?"
+        ]
+    }}
+    ```
+
+**Pregunta del Usuario:**
+{query}
 
 **Tu Salida JSON:**
 """

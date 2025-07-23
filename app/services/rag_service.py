@@ -16,7 +16,7 @@ from ..schemas.qa_cache import QACacheCreate
 from ..schemas.document import DocumentResponse, RefinedQuerySuggestion, QueryResponse, Source
 from ..core.config import settings
 from ..db.session import get_db
-from ..core.prompts import RAG_ANALYST_PROMPT_TEMPLATE, QUERY_REFINEMENT_PROMPT
+from ..core.prompts import RAG_ANALYST_PROMPT_TEMPLATE, QUERY_REFINEMENT_PROMPT, QUERY_DECOMPOSITION_PROMPT # <-- AÑADIR QUERY_DECOMPOSITION_PROMPT
 
 # --- Inicialización de Clientes ---
 client_openai = openai.OpenAI()
@@ -132,25 +132,52 @@ def perform_rag_query(query: str, namespace: str) -> QueryResponse:
         logger.info("--- RAG DEBUG START ---")
         logger.info(f"Query: '{query}'")
 
+        # --- Query Decomposition (Nuevo Paso) ---
+        decomposed_queries = [query] # Por defecto, la pregunta original
         try:
-            expansion_response = client_openai.chat.completions.create(
-                model="gpt-3.5-turbo",
+            decomposition_response = client_openai.chat.completions.create(
+                model="gpt-4o", # Usar un modelo capaz de entender la complejidad
                 messages=[
-                    {"role": "system", "content": "\n                    You are an expert at query expansion for vector search. Given a user's query, generate 3 additional, different versions of the query. The new queries should use synonyms, rephrase the question, or explore sub-topics. \n                    **Crucially, one of the queries must be specifically crafted to find quantitative data, statistics, or numerical figures related to the original question.**\n                    Return a JSON object with a key 'queries' containing a list of 4 strings: the original query and the 3 new ones.\n                    "},
+                    {"role": "system", "content": QUERY_DECOMPOSITION_PROMPT},
                     {"role": "user", "content": query}
                 ],
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                temperature=0.0
             )
-            queries_data = json.loads(expansion_response.choices[0].message.content)
-            all_queries = queries_data.get("queries", [query])
-            logger.info(f"Consultas expandidas: {all_queries}")
+            decomposition_data = json.loads(decomposition_response.choices[0].message.content)
+            if decomposition_data and "sub_queries" in decomposition_data and isinstance(decomposition_data["sub_queries"], list):
+                decomposed_queries = decomposition_data["sub_queries"]
+            logger.info(f"Pregunta descompuesta en: {decomposed_queries}")
         except Exception as e:
-            logger.error(f"Error en la expansión de consulta, usando solo la original. Error: {e}", exc_info=True)
-            all_queries = [query]
+            logger.error(f"Error en la descomposición de consulta, usando solo la original. Error: {e}", exc_info=True)
+        
+        # --- Query Expansion (Existente, ahora sobre las preguntas descompuestas) ---
+        all_queries_for_embedding = []
+        for dq in decomposed_queries:
+            try:
+                expansion_response = client_openai.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "\n                        You are an expert at query expansion for vector search. Given a user's query, generate 3 additional, different versions of the query. The new queries should use synonyms, rephrase the question, or explore sub-topics. \n                        **Crucially, one of the queries must be specifically crafted to find quantitative data, statistics, or numerical figures related to the original question.**\n                        Return a JSON object with a key 'queries' containing a list of 4 strings: the original query and the 3 new ones.\n                        "},
+                        {"role": "user", "content": dq} # Usar la pregunta descompuesta
+                    ],
+                    response_format={"type": "json_object"}
+                )
+                queries_data = json.loads(expansion_response.choices[0].message.content)
+                all_queries_for_embedding.extend(queries_data.get("queries", [dq]))
+            except Exception as e:
+                logger.error(f"Error en la expansión de consulta para '{dq}', usando solo la original. Error: {e}", exc_info=True)
+                all_queries_for_embedding.append(dq)
+
+        # Asegurarse de que la pregunta original esté siempre incluida
+        if query not in all_queries_for_embedding:
+            all_queries_for_embedding.insert(0, query)
+
+        logger.info(f"Consultas finales para embedding: {all_queries_for_embedding}")
 
         try:
             query_embedding_response = client_openai.embeddings.create(
-                input=all_queries,
+                input=all_queries_for_embedding,
                 model="text-embedding-3-small"
             )
             query_embeddings = [item.embedding for item in query_embedding_response.data]

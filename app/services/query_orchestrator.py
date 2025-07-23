@@ -26,7 +26,7 @@ async def _condense_query_with_history(history: List[ChatMessage], query: str) -
         response = await client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": CONDENSE_QUESTION_PROMPT.format(chat_history=chat_history_str)},
+                {"role": "system", "content": CONDENSE_QUESTION_PROMPT.format(chat_history=chat_history_str, question=query)},
                 {"role": "user", "content": query}
             ],
             temperature=0.0,
@@ -103,13 +103,8 @@ class QueryOrchestrator:
             # El historial completo es necesario aquí
             full_history = chat_request.history + [ChatMessage(role="user", content=chat_request.query)]
             return await _answer_from_history(full_history, chat_request.query)
-        
-        elif tool_to_use == "check_q&a_cache":
-            # (Lógica de caché futura aquí. Por ahora, pasa a RAG)
-            logger.info("Herramienta 'check_q&a_cache' seleccionada, pasando a RAG por ahora.")
-            pass # Cae al flujo de query_knowledge_base
 
-        # Fallback y ruta principal: query_knowledge_base
+        # Fallback y ruta principal: query_knowledge_base (incluye verificación de caché)
         # 3. Condensar la pregunta si es necesario
         condensed_query = await _condense_query_with_history(chat_request.history, chat_request.query)
         
