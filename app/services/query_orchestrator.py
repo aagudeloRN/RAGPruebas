@@ -109,7 +109,7 @@ class QueryOrchestrator:
         condensed_query = await _condense_query_with_history(chat_request.history, chat_request.query)
         
         # 4. Ejecutar la consulta RAG con la pregunta condensada
-        rag_response = perform_rag_query(query=condensed_query, namespace=kb_id)
+        rag_response = await perform_rag_query(query=condensed_query, namespace=kb_id)
         
         # 5. Devolver la respuesta en el formato de ChatResponse
         return ChatResponse(

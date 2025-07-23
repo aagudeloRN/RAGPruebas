@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Top 5 Preguntas Frecuentes</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div class="container query-container">
+        <div class="main-background">
+            <header>
+                <img src="/static/logo_blanco.png" alt="Logo Corporativo" style="display: block; margin: 0 auto 1rem auto; max-width: 150px; height: auto;">
+                <h1>Top 5 Preguntas Frecuentes</h1>
+                <p>Las preguntas más consultadas en nuestra base de conocimiento.</p>
+                <nav class="main-nav">
+                    <a href="/library" class="nav-button">Ver Biblioteca</a>
+                    <a href="/query" class="nav-button">Consultar Información (RAG)</a>
+                </nav>
+            </header>
+
+            <main id="faq-list" class="faq-list">
+                <!-- Las preguntas frecuentes se cargarán aquí -->
+                <div class="loading-message">Cargando preguntas frecuentes...</div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const faqList = document.getElementById('faq-list');
+
+            try {
+                const response = await fetch('/faq/top5');
+                if (!response.ok) {
+                    throw new Error('No se pudieron cargar las preguntas frecuentes.');
+                }
+                const qas = await response.json();
+
+                faqList.innerHTML = ''; // Limpiar mensaje de carga
+
+                if (qas.length === 0) {
+                    faqList.innerHTML = '<p class="empty-message">Aún no hay preguntas frecuentes registradas.</p>';
+                    return;
+                }
+
+                qas.forEach((qa, index) => {
+                    const qaItem = document.createElement('div');
+                    qaItem.className = 'faq-item';
+                    
+                    const questionHeader = document.createElement('h2');
+                    questionHeader.textContent = `${index + 1}. ${qa.question}`;
+                    questionHeader.style.cursor = 'pointer'; // Indicar que es clickeable
+                    questionHeader.classList.add('faq-question-header'); // Nueva clase para estilos
+
+                    const answerDiv = document.createElement('div');
+                    answerDiv.className = 'faq-answer';
+                    answerDiv.style.display = 'none'; // Oculta por defecto
+                    answerDiv.innerHTML = marked.parse(qa.answer);
+
+                    if (qa.sources && qa.sources.length > 0) {
+                        const sourcesContainer = document.createElement('div');
+                        sourcesContainer.className = 'sources-container';
+
+                        const toggleButton = document.createElement('button');
+                        toggleButton.className = 'btn btn-secondary sources-toggle-btn';
+                        toggleButton.innerHTML = `<span>📚</span> Fuentes (${qa.sources.length})`;
+                        
+                        const sourcesList = document.createElement('div');
+                        sourcesList.className = 'sources-list';
+                        sourcesList.style.display = 'none';
+
+                        qa.sources.forEach(source => {
+                            const sourceCard = document.createElement('a');
+                            sourceCard.className = 'source-card';
+                            sourceCard.href = source.source_url || '#';
+                            sourceCard.target = '_blank';
+                            const year = source.publication_year ? ` - ${source.publication_year}` : '';
+                            sourceCard.innerHTML = `<strong>${source.title || 'Fuente desconocida'}</strong><p>${source.publisher || 'Publicador no disponible'}${year}</p>`;
+                            sourcesList.appendChild(sourceCard);
+                        });
+
+                        toggleButton.addEventListener('click', () => {
+                            const isHidden = sourcesList.style.display === 'none';
+                            sourcesList.style.display = isHidden ? 'grid' : 'none';
+                        });
+
+                        sourcesContainer.appendChild(toggleButton);
+                        sourcesContainer.appendChild(sourcesList);
+                        answerDiv.appendChild(sourcesContainer);
+                    }
+
+                    questionHeader.addEventListener('click', () => {
+                        const isHidden = answerDiv.style.display === 'none';
+                        answerDiv.style.display = isHidden ? 'block' : 'none';
+                    });
+
+                    qaItem.appendChild(questionHeader);
+                    qaItem.appendChild(answerDiv);
+                    faqList.appendChild(qaItem);
+                });
+
+            } catch (error) {
+                faqList.innerHTML = `<p class="error-message">Error al cargar las preguntas frecuentes: ${error.message}</p>`;
+                console.error('Error al cargar FAQ:', error);
+            }
+        });
+    </script>
+</body>
+</html>

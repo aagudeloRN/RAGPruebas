@@ -5,6 +5,7 @@ import json
 from typing import List, Optional
 from sqlalchemy.orm import Session
 import logging
+from openai import AsyncOpenAI # Importar AsyncOpenAI
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -19,18 +20,18 @@ from ..db.session import get_db
 from ..core.prompts import RAG_ANALYST_PROMPT_TEMPLATE, QUERY_REFINEMENT_PROMPT, QUERY_DECOMPOSITION_PROMPT # <-- AÑADIR QUERY_DECOMPOSITION_PROMPT
 
 # --- Inicialización de Clientes ---
-client_openai = openai.OpenAI()
+client_openai = AsyncOpenAI()
 pc = Pinecone(api_key=settings.PINECONE_API_KEY)
 co_client = cohere.Client(settings.COHERE_API_KEY)
 pinecone_index = pc.Index(settings.PINECONE_INDEX_NAME)
 
-def get_refined_query_suggestions(query: str) -> List[RefinedQuerySuggestion]:
+async def get_refined_query_suggestions(query: str) -> List[RefinedQuerySuggestion]:
     """
     Usa un LLM para refinar la pregunta de un usuario y devolver una lista de sugerencias con descripciones.
     """
     logger.info(f"Refinando la consulta: '{query}'")
     try:
-        refinement_response = client_openai.chat.completions.create(
+        refinement_response = await client_openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {
@@ -59,7 +60,7 @@ def get_refined_query_suggestions(query: str) -> List[RefinedQuerySuggestion]:
         logger.error(f"Error al refinar la consulta: {e}", exc_info=True)
         return [RefinedQuerySuggestion(query=query, description="No se pudieron generar sugerencias. Intenta con tu pregunta original.")]
 
-def semantic_search_documents(
+async def semantic_search_documents(
     query: str,
     namespace: str,
     db: Session,
@@ -71,7 +72,7 @@ def semantic_search_documents(
     """
     try:
         logger.info(f"Generando embedding para la consulta: '{query}'")
-        query_embedding_response = client_openai.embeddings.create(
+        query_embedding_response = await client_openai.embeddings.create(
             input=[query],
             model=settings.OPENAI_EMBEDDING_MODEL
         )
@@ -116,14 +117,14 @@ def semantic_search_documents(
         logger.error(f"Error en la búsqueda semántica: {e}", exc_info=True)
         return []
 
-def perform_rag_query(query: str, namespace: str) -> QueryResponse:
+async def perform_rag_query(query: str, namespace: str) -> QueryResponse:
     """
     Orquesta el proceso de Retrieval-Augmented Generation (RAG).
     Ahora devuelve siempre un objeto QueryResponse.
     """
     db: Session = next(get_db())
     try:
-        cached_item = get_qa_cache_by_question(db, question=query)
+        cached_item = await get_qa_cache_by_question(db, question=query)
         if cached_item:
             logger.info(f"Cache hit for query: '{query}'")
             sources_from_cache = [Source.model_validate(s) for s in json.loads(cached_item.context)]
@@ -135,7 +136,7 @@ def perform_rag_query(query: str, namespace: str) -> QueryResponse:
         # --- Query Decomposition (Nuevo Paso) ---
         decomposed_queries = [query] # Por defecto, la pregunta original
         try:
-            decomposition_response = client_openai.chat.completions.create(
+            decomposition_response = await client_openai.chat.completions.create(
                 model="gpt-4o", # Usar un modelo capaz de entender la complejidad
                 messages=[
                     {"role": "system", "content": QUERY_DECOMPOSITION_PROMPT},
@@ -155,7 +156,7 @@ def perform_rag_query(query: str, namespace: str) -> QueryResponse:
         all_queries_for_embedding = []
         for dq in decomposed_queries:
             try:
-                expansion_response = client_openai.chat.completions.create(
+                expansion_response = await client_openai.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
                         {"role": "system", "content": "\n                        You are an expert at query expansion for vector search. Given a user's query, generate 3 additional, different versions of the query. The new queries should use synonyms, rephrase the question, or explore sub-topics. \n                        **Crucially, one of the queries must be specifically crafted to find quantitative data, statistics, or numerical figures related to the original question.**\n                        Return a JSON object with a key 'queries' containing a list of 4 strings: the original query and the 3 new ones.\n                        "},
@@ -176,7 +177,7 @@ def perform_rag_query(query: str, namespace: str) -> QueryResponse:
         logger.info(f"Consultas finales para embedding: {all_queries_for_embedding}")
 
         try:
-            query_embedding_response = client_openai.embeddings.create(
+            query_embedding_response = await client_openai.embeddings.create(
                 input=all_queries_for_embedding,
                 model="text-embedding-3-small"
             )
@@ -244,7 +245,7 @@ def perform_rag_query(query: str, namespace: str) -> QueryResponse:
         prompt_template = RAG_ANALYST_PROMPT_TEMPLATE.format(context=context, query=query)
 
         try:
-            final_response = client_openai.chat.completions.create(
+            final_response = await client_openai.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "system", "content": prompt_template}],
                 temperature=0.1
@@ -261,7 +262,7 @@ def perform_rag_query(query: str, namespace: str) -> QueryResponse:
                 answer=answer,
                 context=json.dumps([s.model_dump() for s in source_objects])
             )
-            create_qa_cache(db, qa_in=qa_to_cache)
+            await create_qa_cache(db, qa_in=qa_to_cache)
         except Exception as e:
             logger.error(f"Error al guardar en caché: {e}", exc_info=True)
 

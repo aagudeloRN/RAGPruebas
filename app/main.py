@@ -23,6 +23,8 @@ from .schemas.document import (
 )
 from .schemas.chat import ChatRequest, ChatResponse # <-- AÑADIR ESTA LÍNEA
 from .db.crud import create_document, update_document_processing_results, get_document_status, get_documents, get_unique_publishers
+from .db.crud_qa_cache import get_top_qa_cache # <-- AÑADIR ESTA LÍNEA
+from .db.crud_qa_cache import get_top_qa_cache # <-- AÑADIR ESTA LÍNEA
 from .db.session import get_db, engine
 from .models.document import Document # Asegúrate que este archivo ahora existe en app/models/document.py
 from .db.base import Base # Apuntamos al nuevo archivo base.py
@@ -266,3 +268,17 @@ async def handle_chat(request: Request, chat_request: ChatRequest):
         # Capturar cualquier otra excepción inesperada
         logging.error(f"Error inesperado en handle_chat: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error al procesar la consulta de chat: {e}")
+
+from .schemas.qa_cache import QACache as QACacheSchema # Importar el esquema Pydantic
+from .db.crud_qa_cache import get_top_qa_cache # <-- AÑADIR ESTA LÍNEA
+
+@app.get("/faq", response_class=HTMLResponse)
+async def read_faq_page(request: Request):
+    """Sirve la página de preguntas frecuentes."""
+    return templates.TemplateResponse("faq.html", {"request": request})
+
+@app.get("/faq/top5", response_model=List[QACacheSchema])
+async def get_top_qa(db: Session = Depends(get_db)):
+    """Recupera las 5 preguntas y respuestas más frecuentes de la caché."""
+    top_qas = get_top_qa_cache(db)
+    return top_qas

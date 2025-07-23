@@ -7,10 +7,14 @@ class QACacheBase(BaseModel):
     context: str | None = None
 
 class QACacheCreate(QACacheBase):
-    pass
+    embedding: str | None = None
+    embedding_model: str | None = None
 
 class QACache(QACacheBase):
     id: int
+    embedding: str | None = None
+    embedding_model: str | None = None
+    hit_count: int
     created_at: datetime
 
     class Config:

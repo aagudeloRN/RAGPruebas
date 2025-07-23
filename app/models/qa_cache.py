@@ -9,4 +9,7 @@ class QACache(Base):
     question = Column(String, unique=True, index=True, nullable=False)
     answer = Column(Text, nullable=False)
     context = Column(Text, nullable=True)
+    embedding = Column(Text, nullable=True) # Para almacenar el embedding de la pregunta
+    embedding_model = Column(String, nullable=True) # Para registrar el modelo de embedding usado
+    hit_count = Column(Integer, default=0, nullable=False) # Contador de aciertos para el top Q&A
     created_at = Column(DateTime(timezone=True), server_default=func.now())
