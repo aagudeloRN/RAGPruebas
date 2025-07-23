@@ -3,243 +3,168 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Consultar Base de Conocimiento</title>
+    <title>Chat de Conocimiento</title>
     <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <div class="container query-container">
         <div class="main-background">
-        <header>
-            <h1>Consultar Base de Conocimiento</h1>
-            <p>Haga una pregunta en lenguaje natural a sus documentos.</p>
-            <nav class="main-nav">
-                <a href="/" class="nav-button">Cargar Documento</a>
-                <a href="/library" class="nav-button">Ver Biblioteca</a>
-            </nav>
-        </header>
+            <header>
+                <h1>Chat de Conocimiento</h1>
+                <p>Inicia una conversación con tus documentos.</p>
+                <nav class="main-nav">
+                    <!-- <a href="/" class="nav-button">Cargar Documento</a> -->
+                    <a href="/library" class="nav-button">Ver Biblioteca</a>
+                    <button id="new-chat-btn" class="nav-button">Nueva Conversación</button>
+                </nav>
+            </header>
 
-        <div class="query-form" style="border: 2px solid red;"> <!-- Temporary inline style for testing CSS loading -->
-            <div class="form-group">
-                <label for="query-input">Su pregunta:</label>
-                <textarea id="query-input" name="query" rows="3" placeholder="Ej: ¿Cuáles son los principales riesgos globales para 2025?"></textarea>
-            </div>
-            <div class="button-group center-button">
-                <button type="button" id="refine-query-btn" class="btn btn-secondary">
-                    <span class="btn-icon">✨</span>
-                    Refinar Pregunta
-                </button>
-            </div>
-        </div>
+            <div id="chat-window" class="chat-window"></div>
 
-        <div id="suggestions-area" class="suggestions-area" style="display: none;">
-            <h3>Sugerencias de Pregunta:</h3>
-            <div id="suggestions-list" class="suggestions-list"></div>
-        </div>
-
-        <div id="results-area" class="results-area" style="display: none;">
-            <div class="results-header">
-                <h2>Respuesta</h2>
-                <button id="copy-answer-btn" class="btn btn-icon-only" title="Copiar respuesta">
-                    <span class="btn-icon">📋</span>
-                </button>
-                <span id="copy-message" class="copy-message" style="display: none;">Copiado!</span>
+            <div id="loading-spinner" class="loading-spinner" style="display: none;">
+                <div class="spinner"></div>
+                <p>Pensando...</p>
             </div>
-            <div id="answer-box" class="answer-box" style="white-space: normal;"></div>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script>
-        function renderMarkdown(md) {
-            if (md) {
-                document.getElementById('answer-box').innerHTML = marked.parse(md);
-            }
-        }
-    </script>
-            <h3>Fuentes Utilizadas</h3>
-            <div id="sources" class="sources-grid"></div>
-        </div>
+
+            <div class="chat-input-area">
+                <form id="chat-form">
+                    <textarea id="chat-input" name="query" rows="1" placeholder="Escribe tu pregunta..."></textarea>
+                    <button type="submit" class="btn btn-primary">Enviar</button>
+                </form>
+                <div id="context-warning" class="context-warning" style="display: none;">
+                    La conversación es larga. Para obtener mejores resultados, considera <a href="#" onclick="startNewChat()">iniciar una nueva conversación</a>.
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        const queryInput = document.getElementById('query-input');
-        const refineQueryBtn = document.getElementById('refine-query-btn');
-        const suggestionsArea = document.getElementById('suggestions-area');
-        const suggestionsList = document.getElementById('suggestions-list');
-        const resultsArea = document.getElementById('results-area');
-        const answerBox = document.getElementById('answer-box'); // Corregido: Usar answer-box
-        const sourcesDiv = document.getElementById('sources');
-        const copyAnswerBtn = document.getElementById('copy-answer-btn');
-        const copyMessage = document.getElementById('copy-message');
+        const chatWindow = document.getElementById('chat-window');
+        const chatForm = document.getElementById('chat-form');
+        const chatInput = document.getElementById('chat-input');
+        const newChatBtn = document.getElementById('new-chat-btn');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const contextWarning = document.getElementById('context-warning');
 
-        let activeQueryButton = null; // To keep track of the button that triggered the last RAG query
+        let chatHistory = [];
+        const CONTEXT_LIMIT = 20; // 10 turnos de conversación
 
-        function resetButtons() {
-            refineQueryBtn.disabled = false;
-            refineQueryBtn.innerHTML = '<span class="btn-icon">✨</span> Refinar Pregunta';
-            // Remove active class from all suggestion buttons
-            document.querySelectorAll('.btn-suggestion').forEach(btn => {
-                btn.classList.remove('active');
-                btn.classList.remove('cached-response'); // Also remove cached-response class
-            });
-            if (activeQueryButton) {
-                activeQueryButton.classList.remove('active');
-                activeQueryButton.classList.remove('cached-response'); // Also remove cached-response class
-                activeQueryButton = null; // Clear active button
-            }
-        }
+        // --- Funciones de renderizado ---
+        function appendMessage(role, content, sources = []) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('chat-message', `${role}-message`);
 
-        function setActiveButton(button) {
-            resetButtons(); // Reset all buttons first
-            if (button) {
-                button.classList.add('active');
-                activeQueryButton = button;
-            }
-        }
+            const contentDiv = document.createElement('div');
+            contentDiv.innerHTML = marked.parse(content);
+            messageDiv.appendChild(contentDiv);
 
-        // Function to handle RAG query submission
-        async function submitRAGQuery(queryToSubmit, sourceButton) {
-            console.log(`[DEBUG] submitRAGQuery llamado con: "${queryToSubmit}"`);
-            if (!queryToSubmit) {
-                console.error("[DEBUG] La consulta está vacía. Abortando.");
-                return;
-            }
+            if (sources.length > 0) {
+                const sourcesContainer = document.createElement('div');
+                sourcesContainer.className = 'sources-container';
 
-            // Set active state and disable the clicked button
-            setActiveButton(sourceButton);
-            sourceButton.disabled = true;
-            sourceButton.dataset.originalText = sourceButton.innerHTML; // Store original text
-            sourceButton.innerHTML = 'Pensando...';
+                const toggleButton = document.createElement('button');
+                toggleButton.className = 'btn btn-secondary sources-toggle-btn';
+                toggleButton.innerHTML = `<span>📚</span> Fuentes (${sources.length})`;
+                
+                const sourcesList = document.createElement('div');
+                sourcesList.className = 'sources-list';
+                sourcesList.style.display = 'none'; // Oculta por defecto
 
-            resultsArea.style.display = 'block';
-            answerBox.innerHTML = '<p>Generando respuesta...</p>'; // Corregido: Usar answerBox
-            sourcesDiv.innerHTML = '';
-            copyMessage.style.display = 'none'; // Hide copy message
-
-            try {
-                console.log("[DEBUG] Realizando fetch a /query/...");
-                const response = await fetch('/query/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: queryToSubmit })
+                sources.forEach(source => {
+                    const sourceCard = document.createElement('a');
+                    sourceCard.className = 'source-card';
+                    sourceCard.href = source.source_url || '#';
+                    sourceCard.target = '_blank';
+                    const year = source.publication_year ? ` - ${source.publication_year}` : '';
+                    sourceCard.innerHTML = `<strong>${source.title || 'Fuente desconocida'}</strong><p>${source.publisher || 'Publicador no disponible'}${year}</p>`;
+                    sourcesList.appendChild(sourceCard);
                 });
 
-                console.log(`[DEBUG] Respuesta recibida del servidor con estado: ${response.status}`);
+                toggleButton.addEventListener('click', () => {
+                    const isHidden = sourcesList.style.display === 'none';
+                    sourcesList.style.display = isHidden ? 'grid' : 'none';
+                });
+
+                sourcesContainer.appendChild(toggleButton);
+                sourcesContainer.appendChild(sourcesList);
+                messageDiv.appendChild(sourcesContainer);
+            }
+
+            chatWindow.appendChild(messageDiv);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        function displayLoading(isLoading) {
+            loadingSpinner.style.display = isLoading ? 'flex' : 'none';
+        }
+
+        function checkContextWarning() {
+            if (chatHistory.length > CONTEXT_LIMIT) {
+                contextWarning.style.display = 'block';
+            } else {
+                contextWarning.style.display = 'none';
+            }
+        }
+
+        // --- Lógica del Chat ---
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+            const query = chatInput.value.trim();
+            if (!query) return;
+
+            appendMessage('user', query);
+            chatHistory.push({ role: 'user', content: query });
+            chatInput.value = '';
+            chatInput.style.height = 'auto';
+
+            checkContextWarning();
+            displayLoading(true);
+
+            try {
+                const response = await fetch('/chat/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query, history: chatHistory.slice(0, -1) })
+                });
+
                 if (!response.ok) {
                     const err = await response.json();
-                    console.error("[DEBUG] Error en la respuesta:", err);
                     throw new Error(err.detail || 'Error en el servidor.');
                 }
 
                 const data = await response.json();
-                console.log("[DEBUG] Datos recibidos:", data);
-                
-                // Usar el div correcto y renderizar Markdown
-                renderMarkdown(data.answer);
 
-                if (data.sources && data.sources.length > 0) {
-                    sourcesDiv.innerHTML = ''; // Clear previous sources
-                    data.sources.forEach(source => {
-                        const sourceCard = document.createElement('a');
-                        sourceCard.className = 'source-card';
-                        sourceCard.href = source.source_url || '#';
-                        sourceCard.target = '_blank';
-                        const year = source.publication_year ? ` - ${source.publication_year}` : '';
-                        sourceCard.innerHTML = `<strong>${source.title || 'Fuente desconocida'}</strong><p>${source.publisher || 'Publicador no disponible'}${year}</p>`;
-                        sourcesDiv.appendChild(sourceCard);
-                    });
-                } else {
-                    sourcesDiv.innerHTML = '<p>No se encontraron fuentes específicas para esta respuesta.</p>';
-                }
-
-                // Add cached-response class if it's a cache hit
-                if (data.cache_hit) {
-                    sourceButton.classList.add('cached-response');
-                }
+                appendMessage('assistant', data.answer, data.sources);
+                chatHistory.push({ role: 'assistant', content: data.answer });
 
             } catch (error) {
-                console.error("[DEBUG] Error en el bloque try/catch:", error);
-                answerBox.innerHTML = `<p class="error">Error: ${error.message}</p>`; // Corregido: Usar answerBox
+                appendMessage('assistant', `Lo siento, ocurrió un error: ${error.message}`);
             } finally {
-                console.log("[DEBUG] Bloque finally ejecutado.");
-                // Restore the clicked button's state
-                sourceButton.disabled = false;
-                sourceButton.innerHTML = sourceButton.dataset.originalText;
+                displayLoading(false);
+                checkContextWarning();
             }
         }
 
-        // Event listener for Refine Question button
-        refineQueryBtn.addEventListener('click', async () => {
-            const query = queryInput.value.trim();
-            if (!query) return;
+        function startNewChat() {
+            chatHistory = [];
+            chatWindow.innerHTML = '';
+            appendMessage('assistant', 'Hola, ¿en qué puedo ayudarte hoy?');
+            checkContextWarning();
+            return false; // Para prevenir el comportamiento por defecto del enlace
+        }
 
-            resetButtons();
-            refineQueryBtn.disabled = true;
-            refineQueryBtn.textContent = 'Refinando...';
-            suggestionsList.innerHTML = ''; // Clear previous suggestions
-            suggestionsArea.style.display = 'none'; // Hide suggestions area initially
-
-            try {
-                const response = await fetch('/query/refine', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: query })
-                });
-
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.detail || 'Error al refinar la pregunta.');
-                }
-
-                const data = await response.json();
-                if (data.suggestions && data.suggestions.length > 0) {
-                    suggestionsArea.style.display = 'block';
-                    data.suggestions.forEach(suggestion => {
-                        const suggestionContainer = document.createElement('div');
-                        suggestionContainer.className = 'suggestion-item';
-
-                        const suggestionBtn = document.createElement('button');
-                        suggestionBtn.type = 'button';
-                        suggestionBtn.className = 'btn btn-suggestion';
-                        suggestionBtn.textContent = suggestion.query;
-                        suggestionBtn.dataset.originalText = suggestion.query; // Store original text
-                        suggestionBtn.addEventListener('click', () => {
-                            queryInput.value = suggestion.query; // Set input to suggested query
-                            submitRAGQuery(suggestion.query, suggestionBtn); // Submit the RAG query
-                        });
-
-                        const suggestionDescription = document.createElement('p');
-                        suggestionDescription.className = 'suggestion-description';
-                        suggestionDescription.textContent = suggestion.description;
-
-                        suggestionContainer.appendChild(suggestionBtn);
-                        suggestionContainer.appendChild(suggestionDescription);
-                        suggestionsList.appendChild(suggestionContainer);
-                    });
-                } else {
-                    suggestionsArea.style.display = 'none';
-                }
-
-            } catch (error) {
-                alert(`Error: ${error.message}`);
-                suggestionsArea.style.display = 'none';
-            } finally {
-                refineQueryBtn.disabled = false;
-                refineQueryBtn.innerHTML = '<span class="btn-icon">✨</span> Refinar Pregunta';
-            }
+        // --- Event Listeners ---
+        chatForm.addEventListener('submit', handleFormSubmit);
+        newChatBtn.addEventListener('click', startNewChat);
+        chatInput.addEventListener('input', () => {
+            chatInput.style.height = 'auto';
+            chatInput.style.height = `${chatInput.scrollHeight}px`;
         });
 
-        // Copy to clipboard functionality
-        copyAnswerBtn.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(answerDiv.innerText);
-                copyMessage.style.display = 'inline';
-                setTimeout(() => {
-                    copyMessage.style.display = 'none';
-                }, 2000); // Hide after 2 seconds
-            } catch (err) {
-                console.error('Failed to copy: ', err);
-                alert('Error al copiar la respuesta.');
-            }
-        });
+        // Iniciar el chat al cargar la página
+        startNewChat();
+
     </script>
 </body>
 </html>

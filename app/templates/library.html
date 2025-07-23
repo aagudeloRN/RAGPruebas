@@ -21,8 +21,12 @@
             <div class="search-filters">
                 <div class="filters-grid">
                     <div class="form-group">
-                        <label for="search-input">Buscar</label>
-                        <input type="text" id="search-input" placeholder="Título, resumen, palabras clave...">
+                        <label for="keyword-input">Buscar por palabra clave</label>
+                        <input type="text" id="keyword-input" placeholder="Título, resumen, palabras clave...">
+                    </div>
+                    <div class="form-group">
+                        <label for="semantic-search-input">Búsqueda Semántica</label>
+                        <input type="text" id="semantic-search-input" placeholder="Ej: Impacto de la IA en la salud...">
                     </div>
                     <div class="form-group">
                         <label for="publisher-filter">Publicador</label>
@@ -52,42 +56,88 @@
                             <option value="asc">Ascendente</option>
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label for="docs-per-page">Documentos por página</label>
+                        <select id="docs-per-page">
+                            <option value="10">10</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
         <main id="document-grid" class="document-grid">
             <!-- Las tarjetas de documentos se insertarán aquí por JS -->
         </main>
+
+        <div class="pagination-controls">
+            <button id="prev-page-btn" class="btn btn-secondary" disabled>Anterior</button>
+            <span id="page-info"></span>
+            <button id="next-page-btn" class="btn btn-secondary">Siguiente</button>
+        </div>
+
         </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             const grid = document.getElementById('document-grid');
-            const searchInput = document.getElementById('search-input');
+            const keywordInput = document.getElementById('keyword-input');
+            const semanticSearchInput = document.getElementById('semantic-search-input');
             const publisherFilterInput = document.getElementById('publisher-filter');
             const yearFromInput = document.getElementById('year-from');
             const yearToInput = document.getElementById('year-to');
             const sortBySelect = document.getElementById('sort-by');
             const sortOrderSelect = document.getElementById('sort-order');
+            const docsPerPageSelect = document.getElementById('docs-per-page'); // Nuevo
+            const prevPageBtn = document.getElementById('prev-page-btn');
+            const nextPageBtn = document.getElementById('next-page-btn');
+            const pageInfoSpan = document.getElementById('page-info');
+
+            let currentPage = 0;
+            let documentsPerPage = parseInt(docsPerPageSelect.value); // Leer valor inicial
 
             async function fetchAndRenderDocuments() {
                 grid.innerHTML = '<div class="loading-message">Cargando documentos...</div>';
 
                 const params = new URLSearchParams();
-                const keyword = searchInput.value.trim();
+                const keyword = keywordInput.value.trim();
+                const semanticQuery = semanticSearchInput.value.trim();
                 const publisher = publisherFilterInput.value.trim();
                 const yearFrom = yearFromInput.value.trim();
                 const yearTo = yearToInput.value.trim();
                 const sortBy = sortBySelect.value;
                 const sortOrder = sortOrderSelect.value;
 
-                if (keyword) params.append('keyword', keyword);
-                if (publisher) params.append('publisher_filter', publisher);
-                if (yearFrom) params.append('year_start', yearFrom);
-                if (yearTo) params.append('year_end', yearTo);
-                params.append('sort_by', sortBy);
-                params.append('sort_order', sortOrder);
+                // Parámetros de paginación
+                params.append('skip', currentPage * documentsPerPage);
+                params.append('limit', documentsPerPage);
+
+                if (semanticQuery) {
+                    params.append('query', semanticQuery);
+                    keywordInput.disabled = true;
+                    publisherFilterInput.disabled = true;
+                    yearFromInput.disabled = true;
+                    yearToInput.disabled = true;
+                    sortBySelect.disabled = true;
+                    sortOrderSelect.disabled = true;
+                } else {
+                    keywordInput.disabled = false;
+                    publisherFilterInput.disabled = false;
+                    yearFromInput.disabled = false;
+                    yearToInput.disabled = false;
+                    sortBySelect.disabled = false;
+                    sortOrderSelect.disabled = false;
+
+                    if (keyword) params.append('keyword', keyword);
+                    if (publisher) params.append('publisher_filter', publisher);
+                    if (yearFrom) params.append('year_start', yearFrom);
+                    if (yearTo) params.append('year_end', yearTo);
+                    params.append('sort_by', sortBy);
+                    params.append('sort_order', sortOrder);
+                }
 
                 try {
                     const response = await fetch(`/documents/?${params.toString()}`);
@@ -98,12 +148,15 @@
 
                     renderDocuments(documents);
 
+                    pageInfoSpan.textContent = `Página ${currentPage + 1}`;
+                    prevPageBtn.disabled = currentPage === 0;
+                    nextPageBtn.disabled = documents.length < documentsPerPage;
+
                 } catch (error) {
                     grid.innerHTML = `<div class="empty-library"><h3>❌ Error</h3><p>Error al cargar la biblioteca: ${error.message}</p></div>`;
                 }
             }
 
-            // Función para renderizar documentos
             function renderDocuments(documents) {
                 grid.innerHTML = '';
                 
@@ -144,12 +197,31 @@
             }
 
             // Event listeners para filtros y ordenación
-            searchInput.addEventListener('input', fetchAndRenderDocuments);
-            publisherFilterInput.addEventListener('input', fetchAndRenderDocuments);
-            yearFromInput.addEventListener('input', fetchAndRenderDocuments);
-            yearToInput.addEventListener('input', fetchAndRenderDocuments);
-            sortBySelect.addEventListener('change', fetchAndRenderDocuments);
-            sortOrderSelect.addEventListener('change', fetchAndRenderDocuments);
+            keywordInput.addEventListener('input', () => { currentPage = 0; fetchAndRenderDocuments(); });
+            semanticSearchInput.addEventListener('input', () => { currentPage = 0; fetchAndRenderDocuments(); });
+            publisherFilterInput.addEventListener('input', () => { currentPage = 0; fetchAndRenderDocuments(); });
+            yearFromInput.addEventListener('input', () => { currentPage = 0; fetchAndRenderDocuments(); });
+            yearToInput.addEventListener('input', () => { currentPage = 0; fetchAndRenderDocuments(); });
+            sortBySelect.addEventListener('change', () => { currentPage = 0; fetchAndRenderDocuments(); });
+            sortOrderSelect.addEventListener('change', () => { currentPage = 0; fetchAndRenderDocuments(); });
+            docsPerPageSelect.addEventListener('change', () => { // Nuevo listener
+                documentsPerPage = parseInt(docsPerPageSelect.value);
+                currentPage = 0; // Resetear a la primera página al cambiar el límite
+                fetchAndRenderDocuments();
+            });
+
+            // Event listeners para paginación
+            prevPageBtn.addEventListener('click', () => {
+                if (currentPage > 0) {
+                    currentPage--;
+                    fetchAndRenderDocuments();
+                }
+            });
+
+            nextPageBtn.addEventListener('click', () => {
+                currentPage++;
+                fetchAndRenderDocuments();
+            });
 
             // Autocompletado para publicadores
             const publisherSuggestionsDatalist = document.getElementById('publisher-suggestions');
@@ -158,7 +230,7 @@
             publisherFilterInput.addEventListener('input', () => {
                 clearTimeout(autocompleteTimeout);
                 const searchTerm = publisherFilterInput.value.trim();
-                if (searchTerm.length < 2) { // Solo buscar si hay al menos 2 caracteres
+                if (searchTerm.length < 2) {
                     publisherSuggestionsDatalist.innerHTML = '';
                     return;
                 }
@@ -179,7 +251,7 @@
                     } catch (error) {
                         console.error('Error en autocompletado de publicadores:', error);
                     }
-                }, 300); // Pequeño retraso para evitar muchas peticiones
+                }, 300);
             });
 
             // Cargar documentos al inicio

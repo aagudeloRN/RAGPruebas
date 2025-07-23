@@ -11,16 +11,19 @@
         <div class="main-background">
         <header>
             <h1>Sistema de Vigilancia e Inteligencia</h1>
-            <p>Cargue un documento PDF para analizarlo y añadirlo a la base de conocimiento.</p>
+            <p>Acceda a la base de conocimiento y realice consultas.</p>
         </header>
 
         <nav class="main-nav">
             <a href="/library" class="nav-button">Ver Biblioteca de Documentos</a>
             <a href="/query" class="nav-button">Consultar Información (RAG)</a>
+            <!-- <a href="/" class="nav-button">Cargar Documento</a> -->
         </nav>
 
         <div id="message-area"></div>
 
+        <!-- Funcionalidad de carga de documentos deshabilitada temporalmente -->
+        <!--
         <div class="form-container">
             <form id="upload-form" action="/upload-document/" method="post" enctype="multipart/form-data">
                 <div id="drop-zone" class="drop-zone">
@@ -33,10 +36,13 @@
                 <div class="loader"></div>
             </div>
         </div>
+        -->
         </div>
     </div>
 
     <script>
+        // JavaScript de carga de documentos deshabilitado temporalmente
+        /*
         const form = document.getElementById('upload-form');
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file');
@@ -111,7 +117,7 @@
                 handleFileSelect(e.dataTransfer.files[0]);
             }
         });
+        */
     </script>
 </body>
 </html>
-

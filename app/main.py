@@ -21,6 +21,7 @@ from .schemas.document import (
     QueryResponse, DocumentCreateRequest, QueryRefinementRequest, 
     QueryRefinementResponse, SortByEnum, SortOrderEnum
 )
+from .schemas.chat import ChatRequest, ChatResponse # <-- AÑADIR ESTA LÍNEA
 from .db.crud import create_document, update_document_processing_results, get_document_status, get_documents, get_unique_publishers
 from .db.session import get_db, engine
 from .models.document import Document # Asegúrate que este archivo ahora existe en app/models/document.py
@@ -243,3 +244,25 @@ def handle_query(request: Request, query_request: QueryRequest):
         # Capturar cualquier otra excepción inesperada
         logging.error(f"Error inesperado en handle_query: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error al procesar la consulta: {e}")
+
+@app.post("/chat/", response_model=ChatResponse)
+async def handle_chat(request: Request, chat_request: ChatRequest):
+    """Maneja una consulta conversacional utilizando el orquestador."""
+    try:
+        selected_kb = request.cookies.get("selected_kb_namespace", "default")
+        
+        # Llamar al nuevo método en el orquestador para manejar el chat
+        result = await query_orchestrator.handle_conversational_query(
+            chat_request=chat_request, 
+            kb_id=selected_kb
+        )
+        
+        return result
+
+    except HTTPException as e:
+        # Re-lanzar HTTPExceptions directamente
+        raise e
+    except Exception as e:
+        # Capturar cualquier otra excepción inesperada
+        logging.error(f"Error inesperado en handle_chat: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error al procesar la consulta de chat: {e}")
