@@ -32,13 +32,14 @@ The project is stable and deployed for demonstration purposes.
     -   **Improved Source Display:** Sources are presented compactly with an expandable button to save chat space.
     -   **Context Warning:** Users are warned when conversation history becomes too long, suggesting a new chat for optimal performance.
 -   **Q&A Cache (Memory):**
-    -   Stores exact question-answer pairs in the database to accelerate responses for recurring queries, reducing cost and latency.
+    -   **Semantic Search:** Cache now performs semantic searches for similar (not just identical) questions, improving response speed and efficiency.
+    -   **Hit Tracking:** Implemented `hit_count` to track frequency of cached questions.
+    -   **Top Q&A Module:** A new UI (`/faq`) displays the top 5 most frequently asked questions, with expandable answers and Markdown rendering.
+-   **Corporate Branding:**
+    -   Integrated corporate logo (`logo_blanco.png`) into the headers of all main UI pages (`index.html`, `library.html`, `query.html`, `select_kb.html`, `validate_metadata.html`).
 
 ## 3. Next Steps & Future Implementations
 
--   **Q&A Cache Enhancement:**
-    -   **Objective:** Evolve the cache to perform semantic searches for similar (not just identical) questions.
-    -   **Task:** Generate a publicly viewable list of the "Top 5" most frequently asked questions.
 -   **Traditional Database Integration:**
     -   **Objective:** Enrich RAG answers by connecting to structured data sources (e.g., DANE for industry/technology stats).
     -   **Details:** Develop connectors and query mechanisms to consult external databases for highly specific data points.
@@ -46,7 +47,7 @@ The project is stable and deployed for demonstration purposes.
     -   **Objective:** Implement a system for users to rate answer quality, enabling continuous improvement of the RAG system.
 -   **UI/UX Enhancements:**
     -   **Chat Interface Refinement:** Further improve the conversational flow and user experience.
-    -   **Visual Design Overhaul:** Implement a polished, corporate visual redesign.
+    -   **Visual Design Overhaul:** Implement a polished, corporate visual redesign (using the provided brand manual).
     -   **Pagination System Improvement:** Enhance the pagination system in the document library.
 
 ## 4. Deprioritized / Archived Ideas

@@ -1,0 +1,22 @@
+feat: Implement Top Q&A module and UI improvements
+
+This commit introduces the Top Q&A module and further refines the user interface:
+
+- **Top Q&A Module:**
+    - Added `hit_count` to `QACache` model (`app/models/qa_cache.py`) to track cache hits.
+    - Modified `create_qa_cache` and `get_qa_cache_by_question` (`app/db/crud_qa_cache.py`) to manage `hit_count` and perform semantic search.
+    - Implemented `get_top_qa_cache` function (`app/db/crud_qa_cache.py`) to retrieve top Q&A entries.
+    - Created `/faq` endpoint (`app/main.py`) to serve the new `faq.html` template.
+    - Added `GET /faq/top5` API endpoint (`app/main.py`) to expose top Q&A data.
+    - Designed `app/templates/faq.html` to display top Q&A with expandable answers and Markdown rendering.
+    - Updated navigation links in `index.html`, `library.html`, and `query.html` to point to `/faq`.
+
+- **UI/UX Improvements:**
+    - Enhanced `faq.html` to render Markdown in answers for better presentation.
+    - Removed "Nueva Conversación" button from `faq.html` as it's not relevant to the FAQ page.
+
+- **Bug Fixes (related to async/await):**
+    - Ensured all `client_openai.chat.completions.create` and `client_openai.embeddings.create` calls in `app/services/rag_service.py` are correctly `await`ed.
+    - Corrected `SyntaxError` in `get_refined_query_suggestions` and `semantic_search_documents` by marking them as `async def`.
+
+These changes significantly improve the system's caching capabilities and user experience for frequently asked questions.

@@ -14,4 +14,5 @@ python-multipart
 jinja2
 cohere
 ruff
+requests
 # Cache buster 1

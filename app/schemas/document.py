@@ -21,6 +21,7 @@ class DocumentBase(BaseModel):
     language: Optional[str] = None
 
 class DocumentCreate(DocumentBase):
+    temp_file_path: Optional[str] = None
     pass
 
 
@@ -32,14 +33,14 @@ class DocumentCreateRequest(BaseModel):
     language: Optional[str] = None
     summary: Optional[str] = None
     keywords: Optional[List[str]] = None
+    cover_image_url: Optional[str] = None # Added cover_image_url
 
 class DocumentResponse(DocumentBase):
     id: int
-    summary: Optional[str] = None
-    keywords: Optional[List[str]] = None
-    preview_image_url: Optional[str] = None
     status: str
-    processing_error: Optional[str] = None
+    summary: Optional[str] = None
+    keywords: Optional[List[str]] = []
+    preview_image_url: Optional[str] = None # Corregido para coincidir con el modelo
 
     model_config = {
         "from_attributes": True

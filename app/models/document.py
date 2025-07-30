@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, ARRAY
-from ..db.base import Base
+from app.db.base import Base
 
 class Document(Base):
     __tablename__ = "Repositori_Oficial"
@@ -12,6 +12,6 @@ class Document(Base):
     publication_year = Column(Integer, nullable=True)
     language = Column(Text, nullable=True)
     summary = Column(Text, nullable=True)
-    keywords = Column(ARRAY(String), nullable=True) # Cambiado a ARRAY(String) para coincidir con el schema
+    keywords = Column(ARRAY(String), nullable=True)
     preview_image_url = Column(Text, nullable=True)
     status = Column(String(50), default='processing', nullable=False)

@@ -24,7 +24,7 @@
 
         <div id="form-wrapper">
             <form id="metadata-form">
-            <input type="hidden" id="temp_id" name="temp_id" value="{{ temp_id }}">
+            <input type="hidden" id="document_id" name="document_id" value="{{ document.id }}">
 
             <div class="form-group">
                 <label for="title">Título del Documento *</label>
@@ -62,6 +62,20 @@
                 <input type="text" id="keywords" name="keywords" placeholder="Ej: IA, ética, regulación" required>
             </div>
 
+            <div class="form-group">
+                <label for="is_ocr">¿Documento Escaneado (OCR)?</label>
+                <input type="checkbox" id="is_ocr" name="is_ocr" disabled>
+            </div>
+            <div class="form-group">
+                <label for="processing_notes">Notas de Procesamiento</label>
+                <textarea id="processing_notes" name="processing_notes" rows="3" disabled></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>Imagen de Portada (Generada)</label>
+                <img id="cover_image_preview" src="" alt="Vista previa de la portada" style="max-width: 200px; height: auto; border: 1px solid #ddd; margin-top: 10px; display: none;">
+            </div>
+
             <button type="submit" id="submit-btn">Confirmar y Procesar</button>
         </form>
         </div>
@@ -69,7 +83,11 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // Recuperar los metadatos completos desde sessionStorage
             const metadata = JSON.parse(sessionStorage.getItem('validationMetadata'));
+            const documentId = window.location.pathname.split('/').pop();
+            document.getElementById('document_id').value = documentId;
+
             if (metadata) {
                 document.getElementById('title').value = metadata.title || '';
                 document.getElementById('publisher').value = metadata.publisher || '';
@@ -77,6 +95,16 @@
                 document.getElementById('source_url').value = metadata.source_url || '';
                 document.getElementById('summary').value = metadata.summary || '';
                 document.getElementById('keywords').value = metadata.keywords ? metadata.keywords.join(', ') : '';
+                document.getElementById('is_ocr').checked = metadata.is_ocr || false;
+                document.getElementById('processing_notes').value = metadata.processing_notes || '';
+                
+                const coverImagePreview = document.getElementById('cover_image_preview');
+                if (metadata.cover_image_url) {
+                    coverImagePreview.src = metadata.cover_image_url;
+                    coverImagePreview.style.display = 'block';
+                } else {
+                    coverImagePreview.style.display = 'none';
+                }
                 
                 const langSelect = document.getElementById('language');
                 if (metadata.language) {
@@ -107,7 +135,7 @@
             submitBtn.textContent = 'Procesando...';
             showMessage('Confirmando metadatos y iniciando el procesamiento completo del documento...', 'info');
 
-            const tempId = document.getElementById('temp_id').value;
+            const documentId = document.getElementById('document_id').value;
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
             
@@ -122,7 +150,7 @@
             }
 
             try {
-                const response = await fetch(`/process-document/${tempId}`, {
+                const response = await fetch(`/process-document/${documentId}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
