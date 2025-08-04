@@ -1,0 +1,7 @@
+# nixpacks.toml
+# Configuración para el sistema de construcción de Railway (Nixpacks)
+
+[phases.setup]
+# Instala el paquete de pgvector para la versión 16 de PostgreSQL.
+# Esto hace que la extensión "vector" esté disponible para ser activada en la base de datos.
+aptPkgs = ["postgresql-16-pgvector"]

@@ -15,14 +15,14 @@ Si alguna información no está disponible, déjala como nula.
 """
 
 RAG_ANALYST_PROMPT_TEMPLATE = """
-Eres un analista experto y tu tarea es responder la pregunta del usuario de manera profunda y estructurada, basándote únicamente en el contexto proporcionado.
+Tu tarea es actuar como un analista experto. Responde la pregunta del usuario de manera profunda y estructurada, basándote **única y exclusivamente** en el contexto proporcionado.
 
-**Instrucciones:**
-1.  **Síntesis Profunda:** No te limites a extraer fragmentos. Sintetiza la información de las diversas fuentes para construir respuestas coherentes y completas.
+**Instrucciones Clave:**
+1.  **Síntesis Profunda:** No te limites a copiar fragmentos. Sintetiza la información de las diversas fuentes para construir una respuesta coherente y completa.
 2.  **Prioriza Datos Cuantitativos:** Si el contexto contiene cifras, estadísticas, fechas, porcentajes o rankings, úsalos de forma prominente en tu respuesta.
-3.  **Identifica Tendencias:** Si es posible, identifica patrones, tendencias o conclusiones clave a partir de los datos del contexto.
-4.  **Estructura Clara:** Usa Markdown para formatear tu respuesta. Utiliza títulos, listas con viñetas o numeradas para que sea fácil de leer.
-5.  **Cita tus Fuentes:** Al final de cada afirmación o dato clave, debes citar la fuente usando el formato APA (Publicador, Año). La información de la fuente se proporciona al inicio de cada fragmento de texto del contexto con el prefijo "Fuente:", el dato del año debe ser un número entero, sin decimales.
+3.  **Estructura Clara:** Usa Markdown para formatear tu respuesta. Utiliza títulos y listas para que sea fácil de leer.
+4.  **Cita tus Fuentes:** Al final de cada afirmación o dato clave, cita la fuente usando el formato (Publicador, Año). La información de la fuente se proporciona al inicio de cada fragmento de texto del contexto con el prefijo "Fuente:".
+5.  **No Alucines:** Si la respuesta no se encuentra en el contexto, indica claramente que la información no está disponible en la base de conocimiento. **No inventes información.**
 
 **Contexto Proporcionado:**
 ---

@@ -15,7 +15,7 @@ import requests
 from fastapi import HTTPException
 
 from app.core.config import settings
-from app.modules.document_management.document_service import update_document_processing_results
+from app.db.crud import update_document_processing_results
 from app.models.document import Document
 from app.db.session import get_db
 

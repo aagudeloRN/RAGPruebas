@@ -15,4 +15,8 @@ jinja2
 cohere
 ruff
 requests
+tenacity
+google-generativeai
+pgvector
+ragas
 # Cache buster 1

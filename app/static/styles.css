@@ -526,6 +526,34 @@ button:disabled::before,
     color: var(--color-white);
 }
 
+/* Estilos para el estado de Pinecone */
+.pinecone-status {
+    position: absolute;
+    bottom: var(--spacing-md);
+    left: var(--spacing-md);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-xl);
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.pinecone-ok {
+    background: linear-gradient(135deg, rgba(0, 184, 163, 0.9) 0%, rgba(0, 168, 147, 0.9) 100%);
+    color: var(--color-white);
+}
+
+.pinecone-missing {
+    background: linear-gradient(135deg, rgba(255, 76, 23, 0.9) 0%, rgba(230, 61, 15, 0.9) 100%);
+    color: var(--color-white);
+}
+
 .card-content {
     padding: var(--spacing-lg);
     flex-grow: 1;

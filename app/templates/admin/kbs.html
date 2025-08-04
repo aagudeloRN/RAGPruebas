@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin - Gestionar KBs</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Gestionar Bases de Conocimiento</h1>
+            <a href="/admin" class="btn btn-secondary">Volver al Dashboard</a>
+        </div>
+
+        <h2>Bases de Conocimiento Existentes</h2>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Namespace de Pinecone</th>
+                    <th>Activa</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for kb in kbs %}
+                <tr>
+                    <td><code>{{ kb.id }}</code></td>
+                    <td>{{ kb.name }}</td>
+                    <td><code>{{ kb.pinecone_namespace }}</code></td>
+                    <td>
+                        {% if kb.id == active_kb_id %}
+                            <span class="badge bg-success">Sí</span>
+                        {% else %}
+                            <span class="badge bg-secondary">No</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if kb.id != active_kb_id %}
+                        <form action="/admin/kbs/activate" method="post" style="display:inline;">
+                            <input type="hidden" name="kb_id" value="{{ kb.id }}">
+                            <button type="submit" class="btn btn-sm btn-primary">Activar</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <hr class="my-5">
+
+        <h2>Crear Nueva Base de Conocimiento</h2>
+        <form action="/admin/kbs/create" method="post">
+            <div class="mb-3">
+                <label for="kb_id" class="form-label">ID de la KB (único, sin espacios, e.g., 'tendencias')</label>
+                <input type="text" class="form-control" id="kb_id" name="kb_id" required>
+            </div>
+            <div class="mb-3">
+                <label for="name" class="form-label">Nombre Descriptivo</label>
+                <input type="text" class="form-control" id="name" name="name" required>
+            </div>
+            <div class="mb-3">
+                <label for="description" class="form-label">Descripción</label>
+                <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+            </div>
+            <button type="submit" class="btn btn-success">Crear Base de Conocimiento</button>
+        </form>
+    </div>
+</body>
+</html>

@@ -40,7 +40,8 @@ class DocumentResponse(DocumentBase):
     status: str
     summary: Optional[str] = None
     keywords: Optional[List[str]] = []
-    preview_image_url: Optional[str] = None # Corregido para coincidir con el modelo
+    preview_image_url: Optional[str] = None
+    has_pinecone_vectors: bool = False # Nuevo campo para indicar si tiene vectores en Pinecone
 
     model_config = {
         "from_attributes": True
@@ -88,3 +89,4 @@ class QueryResponse(BaseModel):
     answer: str
     sources: List[Source]
     cache_hit: bool = False
+    context_chunks: Optional[List[str]] = None

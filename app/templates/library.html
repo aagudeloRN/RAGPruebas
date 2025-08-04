@@ -182,21 +182,50 @@
                         <div class="card-image-container">
                             <img src="${doc.preview_image_url || 'https://via.placeholder.com/400x250.png?text=Sin+Vista+Previa'}" alt="Vista previa de ${doc.title}">
                             <span class="status-badge status-${doc.status}">${doc.status}</span>
+                            ${doc.has_pinecone_vectors ? 
+                                '<span class="pinecone-status pinecone-ok" title="Vectores en Pinecone">&#10003; Pinecone</span>' : 
+                                '<span class="pinecone-status pinecone-missing" title="Vectores faltantes en Pinecone">&#10060; Pinecone</span>'
+                            }
                         </div>
                         <div class="card-content">
-                            <h3 class="card-title">${doc.title || 'Título no disponible'}</h3>
-                            <p class="card-publisher">${doc.publisher || 'Publicador no disponible'} - ${doc.publication_year || 'Año no disponible'}</p>
-                            <p class="card-summary">${doc.summary || 'Resumen no disponible.'}</p>
-                            <div class="card-keywords">
-                                <strong>Palabras clave:</strong>
-                                <div>${keywordsHTML}</div>
-                            </div>
-                            ${doc.source_url ? `<a href="${doc.source_url}" target="_blank" class="card-link">Ver fuente original</a>` : ''}
+                        <h3 class="card-title">${doc.title || 'Título no disponible'}</h3>
+                        <p class="card-publisher">${doc.publisher || 'Publicador no disponible'} - ${doc.publication_year || 'Año no disponible'}</p>
+                        <p class="card-summary">${doc.summary || 'Resumen no disponible.'}</p>
+                        <div class="card-keywords">
+                            <strong>Palabras clave:</strong>
+                            <div>${keywordsHTML}</div>
                         </div>
-                    `;
-                    grid.appendChild(card);
+                        ${doc.source_url ? `<a href="${doc.source_url}" target="_blank" class="card-link">Ver fuente original</a>` : ''}
+                        ${doc.status === 'awaiting_validation' || !doc.has_pinecone_vectors ? `<button class="delete-button" data-document-id="${doc.id}">Eliminar</button>` : ''}
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+
+            // Asignar event listeners a los botones de eliminar
+            grid.querySelectorAll('.delete-button').forEach(button => {
+                button.addEventListener('click', async (event) => {
+                    const documentId = event.target.dataset.documentId;
+                    if (confirm(`¿Estás seguro de que quieres eliminar el documento con ID ${documentId}? Esta acción es irreversible.`)) {
+                        try {
+                            const response = await fetch(`/documents/${documentId}`, {
+                                method: 'DELETE',
+                            });
+
+                            if (!response.ok) {
+                                throw new Error(`Error al eliminar el documento: ${response.statusText}`);
+                            }
+
+                            alert(`Documento ${documentId} eliminado exitosamente.`);
+                            fetchAndRenderDocuments(); // Recargar la lista de documentos
+                        } catch (error) {
+                            alert(`Error: ${error.message}`);
+                            console.error('Error al eliminar documento:', error);
+                        }
+                    }
                 });
-            }
+            });
+        }
 
             // Event listeners para filtros y ordenación
             keywordInput.addEventListener('input', () => { currentPage = 0; fetchAndRenderDocuments(); });

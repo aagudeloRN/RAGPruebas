@@ -1,270 +1,136 @@
-import openai
-from pinecone import Pinecone
-import cohere
+# app/modules/rag_chat/rag_service.py
+import logging
 import json
 from typing import List, Optional
-from sqlalchemy.orm import Session
-import logging
-from openai import AsyncOpenAI # Importar AsyncOpenAI
 
-# Configurar logging
+import cohere
+from openai import AsyncOpenAI
+from pinecone import Pinecone
+from sqlalchemy.orm import Session
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+from app.core.config import settings, active_kb
+from app.core.prompts import RAG_ANALYST_PROMPT_TEMPLATE, QUERY_REFINEMENT_PROMPT
+from app.db.crud_qa_cache import get_qa_cache_by_question, create_qa_cache
+from app.schemas.document import QueryResponse, Source
+from app.schemas.qa_cache import QACacheCreate
+
 logger = logging.getLogger(__name__)
 
-from app.core.config import settings
-from app.modules.document_management.document_service import get_document
-from app.db.crud_qa_cache import get_qa_cache_by_question, create_qa_cache
-from app.schemas.qa_cache import QACacheCreate
-from app.schemas.document import DocumentResponse, RefinedQuerySuggestion, QueryResponse, Source
-from app.db.session import get_db
-from app.core.prompts import RAG_ANALYST_PROMPT_TEMPLATE, QUERY_REFINEMENT_PROMPT, QUERY_DECOMPOSITION_PROMPT # <-- AÑADIR QUERY_DECOMPOSITION_PROMPT
-
 # --- Inicialización de Clientes ---
-client_openai = AsyncOpenAI()
+client_openai = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 pc = Pinecone(api_key=settings.PINECONE_API_KEY)
 co_client = cohere.Client(settings.COHERE_API_KEY)
 pinecone_index = pc.Index(settings.PINECONE_INDEX_NAME)
 
-async def get_refined_query_suggestions(query: str) -> List[RefinedQuerySuggestion]:
+@retry(wait=wait_exponential(multiplier=1, min=2, max=6), stop=stop_after_attempt(3))
+async def perform_rag_query(query: str, db: Session, pgvector_db: Session) -> QueryResponse:
     """
-    Usa un LLM para refinar la pregunta de un usuario y devolver una lista de sugerencias con descripciones.
+    Orquesta el proceso RAG para la base de conocimiento activa.
     """
-    logger.info(f"Refinando la consulta: '{query}'")
+    if not active_kb.id or not active_kb.pinecone_namespace:
+        raise ValueError("La Base de Conocimiento activa no está configurada.")
+
+    # 1. Búsqueda en Caché
+    cached_item = await get_qa_cache_by_question(pgvector_db, question=query, kb_id=active_kb.id)
+    if cached_item:
+        logger.info(f"Cache HIT para KB '{active_kb.id}' (ID: {cached_item.id}).")
+        sources_from_cache = [Source.model_validate(s) for s in json.loads(cached_item.context)]
+        return QueryResponse(answer=cached_item.answer, sources=sources_from_cache, cache_hit=True)
+
+    logger.info(f"Cache MISS para KB '{active_kb.id}'. Iniciando proceso RAG.")
+
+    # 2. Generar Embedding para la consulta
     try:
-        refinement_response = await client_openai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {
-                    "role": "system",
-                    "content": QUERY_REFINEMENT_PROMPT
-                },
-                {"role": "user", "content": query}
-            ],
-            response_format={"type": "json_object"}
-        )
-        suggestions_data = json.loads(refinement_response.choices[0].message.content)
-        
-        parsed_suggestions = []
-        for s in suggestions_data.get("suggestions", []):
-            if isinstance(s, dict) and "query" in s and "description" in s:
-                parsed_suggestions.append(RefinedQuerySuggestion(query=s["query"], description=s["description"]))
-            elif isinstance(s, str):
-                parsed_suggestions.append(RefinedQuerySuggestion(query=s, description="Sugerencia general."))
-
-        if not any(s.query == query for s in parsed_suggestions):
-            parsed_suggestions.insert(0, RefinedQuerySuggestion(query=query, description="Tu pregunta original."))
-
-        logger.info(f"Sugerencias generadas: {parsed_suggestions}")
-        return parsed_suggestions
-    except Exception as e:
-        logger.error(f"Error al refinar la consulta: {e}", exc_info=True)
-        return [RefinedQuerySuggestion(query=query, description="No se pudieron generar sugerencias. Intenta con tu pregunta original.")]
-
-async def semantic_search_documents(
-    query: str,
-    namespace: str,
-    db: Session,
-    start_year: Optional[int] = None,
-    end_year: Optional[int] = None
-) -> List[DocumentResponse]:
-    """
-    Realiza una búsqueda semántica de documentos en Pinecone y recupera los detalles completos de la DB.
-    """
-    try:
-        logger.info(f"Generando embedding para la consulta: '{query}'")
         query_embedding_response = await client_openai.embeddings.create(
             input=[query],
             model=settings.OPENAI_EMBEDDING_MODEL
         )
         query_embedding = query_embedding_response.data[0].embedding
+    except Exception as e:
+        logger.error(f"Error al generar embedding: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno al procesar la consulta.")
 
-        pinecone_filter = {}
-        if start_year is not None:
-            pinecone_filter["publication_year"] = {"$gte": start_year}
-        if end_year is not None:
-            if "publication_year" in pinecone_filter:
-                pinecone_filter["publication_year"]["$lte"] = end_year
-            else:
-                pinecone_filter["publication_year"] = {"$lte": end_year}
-
-        logger.info(f"Buscando en Pinecone con filtro: {pinecone_filter}")
+    # 3. Búsqueda en Pinecone
+    try:
         search_response = pinecone_index.query(
             vector=query_embedding,
-            top_k=20,
+            top_k=15,
             include_metadata=True,
-            namespace=namespace,
-            filter=pinecone_filter if pinecone_filter else None
+            namespace=active_kb.pinecone_namespace
         )
-
-        unique_document_ids_ordered = []
-        seen_document_ids = set()
-        for match in search_response.matches:
-            doc_id = match.metadata.get("document_id")
-            if doc_id and doc_id not in seen_document_ids:
-                unique_document_ids_ordered.append(doc_id)
-                seen_document_ids.add(doc_id)
-
-        logger.info(f"Recuperando {len(unique_document_ids_ordered)} documentos únicos de PostgreSQL.")
-        documents = []
-        for doc_id in unique_document_ids_ordered:
-            doc = get_document(db, doc_id)
-            if doc:
-                documents.append(DocumentResponse.model_validate(doc))
-
-        return documents
-
+        if not search_response.matches:
+            return QueryResponse(answer="No se encontró información relevante en la base de conocimiento.", sources=[])
     except Exception as e:
-        logger.error(f"Error en la búsqueda semántica: {e}", exc_info=True)
-        return []
+        logger.error(f"Error en la búsqueda de Pinecone: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno al buscar en la base de datos vectorial.")
 
-async def perform_rag_query(query: str, namespace: str) -> QueryResponse:
-    """
-    Orquesta el proceso de Retrieval-Augmented Generation (RAG).
-    Ahora devuelve siempre un objeto QueryResponse.
-    """
-    db: Session = next(get_db())
+    # 4. Re-ranking con Cohere
+    docs_to_rerank = [match.metadata.get('text', '') for match in search_response.matches]
     try:
-        cached_item = await get_qa_cache_by_question(db, question=query)
-        if cached_item:
-            logger.info(f"Cache hit for query: '{query}'")
-            sources_from_cache = [Source.model_validate(s) for s in json.loads(cached_item.context)]
-            return QueryResponse(answer=cached_item.answer, sources=sources_from_cache, cache_hit=True)
+        rerank_results = co_client.rerank(
+            model='rerank-multilingual-v3.0',
+            query=query,
+            documents=docs_to_rerank,
+            top_n=10
+        )
+    except Exception as e:
+        logger.error(f"Error en el re-ranking de Cohere: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno al procesar los resultados.")
 
-        logger.info("--- RAG DEBUG START ---")
-        logger.info(f"Query: '{query}'")
-
-        # --- Query Decomposition (Nuevo Paso) ---
-        decomposed_queries = [query] # Por defecto, la pregunta original
-        try:
-            decomposition_response = await client_openai.chat.completions.create(
-                model="gpt-4o", # Usar un modelo capaz de entender la complejidad
-                messages=[
-                    {"role": "system", "content": QUERY_DECOMPOSITION_PROMPT},
-                    {"role": "user", "content": query}
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.0
-            )
-            decomposition_data = json.loads(decomposition_response.choices[0].message.content)
-            if decomposition_data and "sub_queries" in decomposition_data and isinstance(decomposition_data["sub_queries"], list):
-                decomposed_queries = decomposition_data["sub_queries"]
-            logger.info(f"Pregunta descompuesta en: {decomposed_queries}")
-        except Exception as e:
-            logger.error(f"Error en la descomposición de consulta, usando solo la original. Error: {e}", exc_info=True)
+    # 5. Construir Contexto y Fuentes
+    context = ""
+    sources = {}
+    context_chunks_for_cache = []
+    for rank in rerank_results.results:
+        if rank.relevance_score < 0.60: # Umbral de relevancia
+            continue
         
-        # --- Query Expansion (Existente, ahora sobre las preguntas descompuestas) ---
-        all_queries_for_embedding = []
-        for dq in decomposed_queries:
-            try:
-                expansion_response = await client_openai.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "\n                        You are an expert at query expansion for vector search. Given a user's query, generate 3 additional, different versions of the query. The new queries should use synonyms, rephrase the question, or explore sub-topics. \n                        **Crucially, one of the queries must be specifically crafted to find quantitative data, statistics, or numerical figures related to the original question.**\n                        Return a JSON object with a key 'queries' containing a list of 4 strings: the original query and the 3 new ones.\n                        "},
-                        {"role": "user", "content": dq} # Usar la pregunta descompuesta
-                    ],
-                    response_format={"type": "json_object"}
-                )
-                queries_data = json.loads(expansion_response.choices[0].message.content)
-                all_queries_for_embedding.extend(queries_data.get("queries", [dq]))
-            except Exception as e:
-                logger.error(f"Error en la expansión de consulta para '{dq}', usando solo la original. Error: {e}", exc_info=True)
-                all_queries_for_embedding.append(dq)
+        original_match = search_response.matches[rank.index]
+        chunk_text = original_match.metadata.get('text', '')
+        context_chunks_for_cache.append(chunk_text)
 
-        # Asegurarse de que la pregunta original esté siempre incluida
-        if query not in all_queries_for_embedding:
-            all_queries_for_embedding.insert(0, query)
+        publisher = original_match.metadata.get('publisher', 'N/A')
+        year = original_match.metadata.get('publication_year', 's.f.')
+        context += f"Fuente: ({publisher}, {year})\n{chunk_text}\n\n"
+        
+        doc_id = original_match.metadata.get('document_id')
+        if doc_id and doc_id not in sources:
+            sources[doc_id] = {
+                "id": doc_id,
+                "title": original_match.metadata.get('title', 'N/A'),
+                "publisher": publisher,
+                "publication_year": str(year),
+                "source_url": original_match.metadata.get('source_url')
+            }
 
-        logger.info(f"Consultas finales para embedding: {all_queries_for_embedding}")
+    if not context:
+        return QueryResponse(answer="No se encontró información suficientemente relevante.", sources=[])
 
-        try:
-            query_embedding_response = await client_openai.embeddings.create(
-                input=all_queries_for_embedding,
-                model="text-embedding-3-small"
-            )
-            query_embeddings = [item.embedding for item in query_embedding_response.data]
-        except Exception as e:
-            logger.error(f"Error al crear embeddings: {e}", exc_info=True)
-            return QueryResponse(answer="Error interno al generar embeddings para la consulta.", sources=[])
+    # 6. Generar Respuesta Final con LLM
+    prompt = RAG_ANALYST_PROMPT_TEMPLATE.format(context=context, query=query)
+    try:
+        final_response = await client_openai.chat.completions.create(
+            model=settings.OPENAI_LLM_MODEL,
+            messages=[{"role": "system", "content": prompt}],
+            temperature=0.1
+        )
+        answer = final_response.choices[0].message.content
+    except Exception as e:
+        logger.error(f"Error en la generación de respuesta final: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno al generar la respuesta.")
 
-        all_matches = []
-        seen_chunk_ids = set()
-        try:
-            for emb in query_embeddings:
-                search_response = pinecone_index.query(
-                    vector=emb,
-                    top_k=15,
-                    include_metadata=True,
-                    namespace=namespace
-                )
-                for match in search_response.matches:
-                    if match.id not in seen_chunk_ids:
-                        seen_chunk_ids.add(match.id)
-                        all_matches.append(match)
-            
-            if not all_matches:
-                return QueryResponse(answer="La información no se encuentra en la base de conocimiento.", sources=[])
-        except Exception as e:
-            logger.error(f"Error al buscar en Pinecone: {e}", exc_info=True)
-            return QueryResponse(answer="Error interno al buscar en la base de vectores.", sources=[])
+    # 7. Guardar en Caché
+    source_objects = [Source.model_validate(s) for s in sources.values()]
+    try:
+        qa_to_cache = QACacheCreate(
+            question=query,
+            answer=answer,
+            context=json.dumps([s.model_dump() for s in source_objects]),
+            context_chunks=context_chunks_for_cache
+        )
+        await create_qa_cache(pgvector_db, qa_in=qa_to_cache, kb_id=active_kb.id)
+    except Exception as e:
+        logger.error(f"Error al guardar en caché: {e}", exc_info=True)
 
-        docs_to_rerank = [match.metadata.get('text', '') for match in all_matches]
-        try:
-            rerank_results = co_client.rerank(
-                model='rerank-multilingual-v3.0',
-                query=query,
-                documents=docs_to_rerank,
-                top_n=12
-            )
-        except Exception as e:
-            logger.error(f"Error al re-rankear con Cohere: {e}", exc_info=True)
-            return QueryResponse(answer="Error interno al re-rankear los resultados.", sources=[])
-
-        context = ""
-        sources = {}
-        for rank in rerank_results.results:
-            original_match = all_matches[rank.index]
-            if rank.relevance_score < 0.6:
-                continue
-            publisher = original_match.metadata.get('publisher', 'N/A')
-            year = original_match.metadata.get('publication_year', 's.f.')
-            context += f"Fuente: ({publisher}, {year})\n"
-            context += original_match.metadata.get('text', '') + "\n\n"
-            doc_id = original_match.metadata.get('document_id')
-            if doc_id not in sources:
-                sources[doc_id] = {
-                    "id": doc_id,
-                    "title": original_match.metadata.get('title', 'Título no disponible'),
-                    "publisher": publisher,
-                    "publication_year": str(year),
-                    "source_url": original_match.metadata.get('source_url')
-                }
-
-        if not context:
-            return QueryResponse(answer="La información no se encuentra en la base de conocimiento.", sources=[])
-
-        prompt_template = RAG_ANALYST_PROMPT_TEMPLATE.format(context=context, query=query)
-
-        try:
-            final_response = await client_openai.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "system", "content": prompt_template}],
-                temperature=0.1
-            )
-            answer = final_response.choices[0].message.content
-        except Exception as e:
-            logger.error(f"Error al generar respuesta con LLM: {e}", exc_info=True)
-            return QueryResponse(answer="Error interno al generar la respuesta final.", sources=[])
-
-        source_objects = [Source.model_validate(s) for s in sources.values()]
-        try:
-            qa_to_cache = QACacheCreate(
-                question=query,
-                answer=answer,
-                context=json.dumps([s.model_dump() for s in source_objects])
-            )
-            await create_qa_cache(db, qa_in=qa_to_cache)
-        except Exception as e:
-            logger.error(f"Error al guardar en caché: {e}", exc_info=True)
-
-        return QueryResponse(answer=answer, sources=source_objects)
-    finally:
-        db.close()
+    return QueryResponse(answer=answer, sources=source_objects, cache_hit=False)
