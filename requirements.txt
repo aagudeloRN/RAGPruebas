@@ -19,4 +19,6 @@ tenacity
 google-generativeai
 pgvector
 ragas
+PyPDF2
 # Cache buster 1PyPDF2
+itsdangerous

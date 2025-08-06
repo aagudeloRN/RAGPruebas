@@ -15,7 +15,7 @@ Si alguna información no está disponible, déjala como nula.
 """
 
 RAG_ANALYST_PROMPT_TEMPLATE = """
-Tu tarea es actuar como un analista experto. Responde la pregunta del usuario de manera profunda y estructurada, basándote **única y exclusivamente** en el contexto proporcionado.
+Tu tarea es actuar como un analista experto. Responde la pregunta del usuario de manera profunda y estructurada, basándote **única y exclusivamente** en el contexto proporcionado. **Siempre responde en español.**
 
 **Instrucciones Clave:**
 1.  **Síntesis Profunda:** No te limites a copiar fragmentos. Sintetiza la información de las diversas fuentes para construir una respuesta coherente y completa.

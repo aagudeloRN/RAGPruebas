@@ -57,9 +57,9 @@ class QueryOrchestrator:
         logger.info(f"[Orchestrator] Consulta simple para KB '{active_kb.id}', redirigiendo a RAG.")
         return await perform_rag_query(query=query, db=db, pgvector_db=pgvector_db)
 
-    async def handle_conversational_query(self, chat_request: ChatRequest, db: Session, pgvector_db: Session) -> ChatResponse:
+    async def handle_conversational_query(self, chat_request: ChatRequest, db: Session, pgvector_db: Session, kb_id: str) -> ChatResponse:
         """Maneja una consulta conversacional para la KB activa."""
-        logger.info(f"[Orchestrator] Enrutando consulta para KB '{active_kb.id}': '{chat_request.query}'")
+        logger.info(f"[Orchestrator] Enrutando consulta para KB '{kb_id}': '{chat_request.query}'")
         
         decision = await _route_query(chat_request.history, chat_request.query)
         tool_to_use = decision.get("tool", "query_knowledge_base")
@@ -70,7 +70,7 @@ class QueryOrchestrator:
 
         condensed_query = await _condense_query_with_history(chat_request.history, chat_request.query)
         
-        rag_response = await perform_rag_query(query=condensed_query, db=db, pgvector_db=pgvector_db)
+        rag_response = await perform_rag_query(query=condensed_query, db=db, pgvector_db=pgvector_db, kb_id=kb_id)
         
         return ChatResponse(
             answer=rag_response.answer,

@@ -141,7 +141,7 @@ async def upload_and_extract_metadata(file_bytes: bytes, filename: str) -> Dict[
     return metadata
 
 
-async def process_document_for_rag(document_id: int, namespace: str, temp_file_path: str, validated_data: dict):
+async def process_document_for_rag(document_id: int, namespace: str, temp_file_path: str, validated_data: dict, kb_id: str):
     """
     Procesa un documento para RAG usando datos validados por el usuario.
     """
@@ -158,13 +158,13 @@ async def process_document_for_rag(document_id: int, namespace: str, temp_file_p
                 raise ValueError("No se extrajo texto del PDF para fragmentar.")
         except Exception as e:
             logger.error(f"Error al extraer texto del PDF temporal {document_id}: {e}")
-            update_document_processing_results(db, document_id, {"status": "failed", "processing_error": f"Error en extracción de texto: {e}"})
+            update_document_processing_results(db, kb_id, document_id, results={"status": "failed", "processing_error": f"Error inesperado: {e}"})
             return
 
         # Fragmentar y crear embeddings
         chunks = [text_content[i:i + 1000] for i in range(0, len(text_content), 1000)]
         if not chunks:
-            update_document_processing_results(db, document_id, {"status": "failed", "processing_error": "No se generaron fragmentos de texto."})
+            update_document_processing_results(db, kb_id, document_id, results={"status": "failed", "processing_error": "No se generaron fragmentos de texto."})
             return
 
         vectors_to_upsert = []
@@ -188,27 +188,31 @@ async def process_document_for_rag(document_id: int, namespace: str, temp_file_p
             except Exception as e:
                 logger.error(f"Error al crear embedding para el fragmento {i} del documento {document_id}: {e}")
 
-        # Subir a Pinecone
+        # Subir a Pinecone en lotes
         if vectors_to_upsert:
-            try:
-                pinecone_index.upsert(vectors=vectors_to_upsert, namespace=namespace)
-                logger.info(f"Se subieron {len(vectors_to_upsert)} vectores para el documento {document_id} al namespace {namespace}.")
-                # Actualizar estado final y URL de la imagen de vista previa
-                update_document_processing_results(db, document_id, {
-                    "status": "completed", 
-                    "preview_image_url": validated_data.get("cover_image_url")
-                })
-            except Exception as e:
-                logger.error(f"Error al subir a Pinecone para el documento {document_id}: {e}")
-                update_document_processing_results(db, document_id, {"status": "failed", "processing_error": f"Error en subida a Pinecone: {e}"})
+            batch_size = 100  # Número de vectores por lote
+            total_upserted = 0
+            for i in range(0, len(vectors_to_upsert), batch_size):
+                batch = vectors_to_upsert[i:i + batch_size]
+                try:
+                    pinecone_index.upsert(vectors=batch, namespace=namespace)
+                    total_upserted += len(batch)
+                    logger.info(f"Se subieron {len(batch)} vectores (lote {i//batch_size + 1}) para el documento {document_id} al namespace {namespace}.")
+                except Exception as e:
+                    logger.error(f"Error al subir lote a Pinecone para el documento {document_id}: {e}")
+                    update_document_processing_results(db, kb_id, document_id, results={"status": "failed", "processing_error": f"Error en subida a Pinecone (lote): {e}"})
+                    return # Salir si un lote falla
+
+            logger.info(f"Se subieron un total de {total_upserted} vectores para el documento {document_id} al namespace {namespace}.")
+            # Actualizar estado final y URL de la imagen de vista previa
+            update_document_processing_results(db, kb_id, document_id, results={
+                "status": "completed", 
+                "vector_count": total_upserted,
+                "cover_image_url": validated_data.get("cover_image_url")
+            })
         else:
-            update_document_processing_results(db, document_id, {"status": "failed", "processing_error": "No se generaron vectores para indexar."})
+            update_document_processing_results(db, kb_id, document_id, results={"status": "failed", "processing_error": "No se generaron vectores para indexar."})
 
     except Exception as e:
         logger.error(f"Error no manejado durante el procesamiento RAG para el documento {document_id}: {e}", exc_info=True)
-        update_document_processing_results(db, document_id, {"status": "failed", "processing_error": f"Error inesperado: {e}"})
-    finally:
-        db.close()
-        if os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
-            logger.info(f"Archivo temporal limpiado: {temp_file_path}")
+        update_document_processing_results(db, kb_id, document_id, results={"status": "failed", "processing_error": f"Error inesperado: {e}"})

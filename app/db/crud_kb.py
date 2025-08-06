@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.knowledge_base import KnowledgeBase
 from app.schemas.knowledge_base import KnowledgeBaseCreate
 
-def get_kb(db: Session, kb_id: str) -> KnowledgeBase | None:
+def get_knowledge_base(db: Session, kb_id: str) -> KnowledgeBase | None:
     """Recupera una Base de Conocimiento por su ID."""
     return db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
 

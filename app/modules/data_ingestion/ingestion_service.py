@@ -10,6 +10,7 @@ import shutil
 from .pipeline import upload_and_extract_metadata, process_document_for_rag
 from app.db.crud import create_document, update_document_processing_results, get_document
 from app.schemas.document import DocumentCreateRequest, DocumentResponse
+from app.models.document import Document # <-- Importación añadida
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,6 @@ async def handle_process_document(
     """
     Actualiza metadatos y lanza el procesamiento RAG en segundo plano para el namespace correcto.
     """
-    # El kb_id se infiere del documento, no se pasa como argumento
     db_document = db.query(Document).filter(Document.id == document_id).first()
     if not db_document:
         raise HTTPException(status_code=404, detail="Documento no encontrado.")
@@ -85,25 +85,33 @@ async def handle_process_document(
         raise HTTPException(status_code=404, detail="Archivo temporal no encontrado. Suba de nuevo.")
 
     try:
-        update_data_db = document_data.model_dump(exclude_unset=True)
-        update_data_db["status"] = "processing"
+        # Actualizar el objeto de documento directamente
+        update_data = document_data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(db_document, key, value)
+        db_document.status = "processing"
         
-        updated_document = update_document_processing_results(
-            db, document_id, db_document.kb_id, update_data_db
-        )
+        db.commit()
+        db.refresh(db_document)
 
+        # Lanzar la tarea en segundo plano con el kb_id del documento
         background_tasks.add_task(
             process_document_for_rag,
             document_id=document_id,
-            namespace=pinecone_namespace, # Usamos el namespace de la KB activa
+            namespace=pinecone_namespace,
             temp_file_path=temp_file_path,
-            validated_data=document_data.model_dump()
+            validated_data=document_data.model_dump(),
+            kb_id=db_document.kb_id
         )
 
-        return updated_document
+        return db_document
     except Exception as e:
         db.rollback()
         logger.error(f"Error al procesar documento {document_id}: {e}", exc_info=True)
-        # Asegurarse de que el kb_id se pasa a la función de actualización
-        update_document_processing_results(db, document_id, db_document.kb_id, {"status": "failed"})
+        # Intentar marcar como fallido como último recurso
+        doc_to_fail = db.query(Document).filter(Document.id == document_id).first()
+        if doc_to_fail:
+            doc_to_fail.status = "failed"
+            doc_to_fail.processing_error = f"Error al iniciar el procesamiento: {e}"
+            db.commit()
         raise HTTPException(status_code=500, detail=f"Error al procesar el documento: {e}")

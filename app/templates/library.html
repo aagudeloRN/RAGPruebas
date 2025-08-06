@@ -180,7 +180,7 @@
 
                     card.innerHTML = `
                         <div class="card-image-container">
-                            <img src="${doc.preview_image_url || 'https://via.placeholder.com/400x250.png?text=Sin+Vista+Previa'}" alt="Vista previa de ${doc.title}">
+                            <img src="${doc.cover_image_url || 'https://via.placeholder.com/400x250.png?text=Sin+Vista+Previa'}" alt="Vista previa de ${doc.title}">
                             <span class="status-badge status-${doc.status}">${doc.status}</span>
                             ${doc.has_pinecone_vectors ? 
                                 '<span class="pinecone-status pinecone-ok" title="Vectores en Pinecone">&#10003; Pinecone</span>' : 

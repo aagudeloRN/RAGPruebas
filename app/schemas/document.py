@@ -40,7 +40,7 @@ class DocumentResponse(DocumentBase):
     status: str
     summary: Optional[str] = None
     keywords: Optional[List[str]] = []
-    preview_image_url: Optional[str] = None
+    cover_image_url: Optional[str] = None
     has_pinecone_vectors: bool = False # Nuevo campo para indicar si tiene vectores en Pinecone
 
     model_config = {

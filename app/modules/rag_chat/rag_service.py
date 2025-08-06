@@ -12,6 +12,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from app.core.config import settings, active_kb
 from app.core.prompts import RAG_ANALYST_PROMPT_TEMPLATE, QUERY_REFINEMENT_PROMPT
 from app.db.crud_qa_cache import get_qa_cache_by_question, create_qa_cache
+from app.db.crud_kb import get_knowledge_base # Importar para obtener la KB
 from app.schemas.document import QueryResponse, Source
 from app.schemas.qa_cache import QACacheCreate
 
@@ -24,21 +25,23 @@ co_client = cohere.Client(settings.COHERE_API_KEY)
 pinecone_index = pc.Index(settings.PINECONE_INDEX_NAME)
 
 @retry(wait=wait_exponential(multiplier=1, min=2, max=6), stop=stop_after_attempt(3))
-async def perform_rag_query(query: str, db: Session, pgvector_db: Session) -> QueryResponse:
+async def perform_rag_query(query: str, db: Session, pgvector_db: Session, kb_id: str) -> QueryResponse:
     """
     Orquesta el proceso RAG para la base de conocimiento activa.
     """
-    if not active_kb.id or not active_kb.pinecone_namespace:
-        raise ValueError("La Base de Conocimiento activa no está configurada.")
+    # Obtener la KnowledgeBase activa por su ID
+    current_kb = get_knowledge_base(db, kb_id)
+    if not current_kb or not current_kb.pinecone_namespace:
+        raise ValueError(f"La Base de Conocimiento con ID '{kb_id}' no está configurada o no tiene namespace de Pinecone.")
 
     # 1. Búsqueda en Caché
-    cached_item = await get_qa_cache_by_question(pgvector_db, question=query, kb_id=active_kb.id)
+    cached_item = await get_qa_cache_by_question(pgvector_db, question=query, kb_id=kb_id)
     if cached_item:
-        logger.info(f"Cache HIT para KB '{active_kb.id}' (ID: {cached_item.id}).")
+        logger.info(f"Cache HIT para KB '{kb_id}' (ID: {cached_item.id}).")
         sources_from_cache = [Source.model_validate(s) for s in json.loads(cached_item.context)]
         return QueryResponse(answer=cached_item.answer, sources=sources_from_cache, cache_hit=True)
 
-    logger.info(f"Cache MISS para KB '{active_kb.id}'. Iniciando proceso RAG.")
+    logger.info(f"Cache MISS para KB '{kb_id}'. Iniciando proceso RAG.")
 
     # 2. Generar Embedding para la consulta
     try:
@@ -57,7 +60,7 @@ async def perform_rag_query(query: str, db: Session, pgvector_db: Session) -> Qu
             vector=query_embedding,
             top_k=15,
             include_metadata=True,
-            namespace=active_kb.pinecone_namespace
+            namespace=current_kb.pinecone_namespace
         )
         if not search_response.matches:
             return QueryResponse(answer="No se encontró información relevante en la base de conocimiento.", sources=[])
@@ -83,7 +86,7 @@ async def perform_rag_query(query: str, db: Session, pgvector_db: Session) -> Qu
     sources = {}
     context_chunks_for_cache = []
     for rank in rerank_results.results:
-        if rank.relevance_score < 0.60: # Umbral de relevancia
+        if rank.relevance_score < 0.55: # Umbral de relevancia ajustado a 55%
             continue
         
         original_match = search_response.matches[rank.index]
@@ -129,7 +132,7 @@ async def perform_rag_query(query: str, db: Session, pgvector_db: Session) -> Qu
             context=json.dumps([s.model_dump() for s in source_objects]),
             context_chunks=context_chunks_for_cache
         )
-        await create_qa_cache(pgvector_db, qa_in=qa_to_cache, kb_id=active_kb.id)
+        await create_qa_cache(pgvector_db, qa_in=qa_to_cache, kb_id=kb_id)
     except Exception as e:
         logger.error(f"Error al guardar en caché: {e}", exc_info=True)
 

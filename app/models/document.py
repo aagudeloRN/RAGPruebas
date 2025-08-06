@@ -15,7 +15,7 @@ class Document(Base):
     language = Column(Text, nullable=True)
     summary = Column(Text, nullable=True)
     keywords = Column(ARRAY(String), nullable=True)
-    preview_image_url = Column(Text, nullable=True)
+    cover_image_url = Column(Text, nullable=True)
     status = Column(String(50), default='processing', nullable=False)
 
     knowledge_base = relationship("KnowledgeBase", back_populates="documents")

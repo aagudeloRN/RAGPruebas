@@ -20,6 +20,7 @@ class GlobalSettings(BaseSettings):
     CLOUDINARY_API_SECRET: str
     COHERE_API_KEY: str
     GOOGLE_API_KEY: str
+    SECRET_KEY: str # Nueva clave secreta para sesiones
 
     # --- Variables con valores por defecto ---
     PINECONE_INDEX_NAME: str = "rag-factory-index" # Nuevo nombre estandarizado

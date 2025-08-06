@@ -12,6 +12,12 @@
             <a href="/admin" class="btn btn-secondary">Volver al Dashboard</a>
         </div>
 
+        {% if request.session.get('message') %}
+        <div class="alert alert-success" role="alert">
+            {{ request.session.pop('message') }}
+        </div>
+        {% endif %}
+
         <h2>Bases de Conocimiento Existentes</h2>
         <table class="table">
             <thead>
@@ -55,7 +61,7 @@
         <form action="/admin/kbs/create" method="post">
             <div class="mb-3">
                 <label for="kb_id" class="form-label">ID de la KB (único, sin espacios, e.g., 'tendencias')</label>
-                <input type="text" class="form-control" id="kb_id" name="kb_id" required>
+                <input type="text" class="form-control" id="kb_id" name="id" required>
             </div>
             <div class="mb-3">
                 <label for="name" class="form-label">Nombre Descriptivo</label>

@@ -25,6 +25,7 @@
         <div id="form-wrapper">
             <form id="metadata-form">
             <input type="hidden" id="document_id" name="document_id" value="{{ document_id }}">
+            <input type="hidden" id="cover_image_url" name="cover_image_url">
 
             <div class="form-group">
                 <label for="title">Título del Documento *</label>
@@ -102,6 +103,7 @@
                 if (metadata.cover_image_url) {
                     coverImagePreview.src = metadata.cover_image_url;
                     coverImagePreview.style.display = 'block';
+                    document.getElementById('cover_image_url').value = metadata.cover_image_url; // Asignar al campo oculto
                 } else {
                     coverImagePreview.style.display = 'none';
                 }

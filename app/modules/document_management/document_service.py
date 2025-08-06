@@ -2,6 +2,7 @@
 import logging
 import re
 from sqlalchemy.orm import Session
+from app.models.document import Document # <-- Importación añadida
 import cloudinary
 import cloudinary.uploader
 from pinecone import Pinecone
@@ -44,8 +45,8 @@ def delete_document(db: Session, document_id: int, namespace: str) -> bool:
         return False
 
     # 1. Eliminar de Cloudinary
-    if db_document.preview_image_url:
-        public_id = _get_cloudinary_public_id(db_document.preview_image_url)
+    if db_document.cover_image_url:
+        public_id = _get_cloudinary_public_id(db_document.cover_image_url)
         if public_id:
             try:
                 cloudinary.uploader.destroy(public_id, resource_type="image")

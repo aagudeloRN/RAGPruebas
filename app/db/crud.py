@@ -58,9 +58,9 @@ def create_document(db: Session, document_data: dict, kb_id: str) -> Document:
     db.refresh(db_document)
     return db_document
 
-def update_document_processing_results(db: Session, document_id: int, kb_id: str, results: Dict[str, Any]) -> Optional[Document]:
-    """Actualiza un documento después del procesamiento, dentro de una KB específica."""
-    db_document = get_document(db, document_id, kb_id)
+def update_document_processing_results(db: Session, kb_id: str, document_id: int, results: dict):
+    """Actualiza un documento con los resultados del procesamiento RAG."""
+    db_document = db.query(Document).filter(Document.id == document_id, Document.kb_id == kb_id).first()
     if db_document:
         for key, value in results.items():
             setattr(db_document, key, value)

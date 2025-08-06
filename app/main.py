@@ -42,6 +42,8 @@ from app.schemas.qa_cache import QACache as QACacheSchema
 
 import asyncio
 
+from starlette.middleware.sessions import SessionMiddleware
+
 # --- App Initialization ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -53,6 +55,10 @@ app = FastAPI(
     description="API para gestionar y consultar múltiples bases de conocimiento.",
     version="1.0.0"
 )
+
+# Añadir middleware de sesión para mensajes flash
+# ¡IMPORTANTE! La SECRET_KEY debe ser una cadena aleatoria y segura en producción.
+app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
@@ -117,6 +123,36 @@ async def read_query_page(request: Request):
 async def read_faq_page(request: Request):
     return templates.TemplateResponse("faq.html", {"request": request})
 
+# --- Endpoints de Validación de Metadatos (Nuevos) ---
+
+@app.get("/validate-metadata/{document_id}", response_class=HTMLResponse)
+async def validate_metadata_page(request: Request, document_id: int, db: Session = Depends(get_db)):
+    """Muestra la página para que el usuario valide y complete los metadatos."""
+    doc = get_document(db, document_id=document_id, kb_id=active_kb.id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    return templates.TemplateResponse("validate_metadata.html", {"request": request, "document": doc})
+
+@app.post("/save-metadata/{document_id}")
+async def save_metadata_endpoint(document_id: int, background_tasks: BackgroundTasks, request: Request, db: Session = Depends(get_db)):
+    """Guarda los metadatos validados y lanza el procesamiento en segundo plano."""
+    form_data = await request.form()
+    update_data = DocumentCreateRequest(**form_data)
+    
+    if not active_kb.pinecone_namespace:
+        raise HTTPException(status_code=503, detail="Sistema no configurado. No hay un namespace de Pinecone activo.")
+
+    await handle_process_document(
+        document_id=document_id, 
+        background_tasks=background_tasks,
+        document_data=update_data, 
+        db=db,
+        pinecone_namespace=active_kb.pinecone_namespace
+    )
+    
+    return RedirectResponse(url=f"/library?query={update_data.title}", status_code=303)
+
+
 # --- Endpoints de la API de Chat y Documentos ---
 
 @app.post("/chat/", response_model=ChatResponse)
@@ -169,8 +205,20 @@ def read_documents(
         year_start=year_start, year_end=year_end
     )
     
-    # La comprobación de vectores de Pinecone se hará en el frontend o se simplificará
-    return [DocumentResponse.from_orm(doc) for doc in documents]
+    response_docs = []
+    for doc in documents:
+        doc_response = DocumentResponse.from_orm(doc)
+        doc_response.has_pinecone_vectors = check_pinecone_vectors_exist(doc.id, active_kb.pinecone_namespace)
+        response_docs.append(doc_response)
+    
+    return response_docs
+
+@app.get("/publishers/", response_model=List[str])
+def read_publishers(db: Session = Depends(get_db)):
+    if not active_kb.id:
+        return []
+    return get_unique_publishers(db, kb_id=active_kb.id)
+
 
 # --- Endpoints de Administración (Nuevos) ---
 
@@ -201,15 +249,14 @@ async def create_kb_endpoint(id: str = Form(...), name: str = Form(...), descrip
     return RedirectResponse(url="/admin/kbs", status_code=303)
 
 @app.post("/admin/kbs/activate")
-async def activate_kb_endpoint(kb_id: str = Form(...), db: Session = Depends(get_db)):
+async def activate_kb_endpoint(request: Request, kb_id: str = Form(...), db: Session = Depends(get_db)):
     """Endpoint para activar una Base de Conocimiento."""
     from app.db.crud_kb import set_active_kb
     
     set_active_kb(db, kb_id)
     logger.info(f"Se ha activado la KB '{kb_id}'. Es necesario reiniciar la aplicación para que los cambios surtan efecto.")
     
-    # Idealmente, aquí mostraríamos un mensaje al usuario.
-    # Por ahora, simplemente redirigimos.
+    request.session["message"] = f"KB '{kb_id}' activada. Reinicia la aplicación para aplicar los cambios."
     return RedirectResponse(url="/admin/kbs", status_code=303)
 
 # --- Endpoints de Ingesta (Refactorizados) ---
