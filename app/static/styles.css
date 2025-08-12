@@ -1256,3 +1256,62 @@ button:disabled::before,
 .error-message {
     color: var(--color-orange);
 }
+
+/* ========================================================================== */
+/* === Estilos para Notas al Pie (Disclaimer, Proceso de Pensamiento) === */
+/* ========================================================================== */
+
+.disclaimer p {
+    font-size: 0.75rem; /* Tamaño de letra más pequeño */
+    color: rgba(255, 255, 255, 0.7); /* Color de texto más sutil */
+    text-align: center;
+    margin-top: var(--spacing-lg);
+}
+
+.reasoning-trace {
+    background-color: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--color-gray-light);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+}
+
+.reasoning-trace h4 {
+    font-size: 0.9rem;
+    color: var(--color-lime);
+    margin-bottom: var(--spacing-md);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.reasoning-trace .trace-status,
+.reasoning-trace ul li {
+    font-size: 0.85rem; /* Tamaño de letra más pequeño */
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.reasoning-trace ul {
+    list-style-type: none; /* Quitar viñetas por defecto */
+    padding-left: 0;
+}
+
+.reasoning-trace ul li {
+    padding-left: 1.5em;
+    text-indent: -1.5em;
+    margin-bottom: var(--spacing-sm);
+    transition: color 0.3s ease;
+}
+
+.reasoning-trace ul li::before {
+    content: '⏳'; /* Icono de pendiente */
+    margin-right: 0.75em;
+}
+
+.reasoning-trace ul li.completed {
+    color: var(--color-teal);
+    text-decoration: line-through;
+}
+
+.reasoning-trace ul li.completed::before {
+    content: '✔️'; /* Icono de completado */
+}

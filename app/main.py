@@ -6,7 +6,7 @@ from fastapi import (
     BackgroundTasks, Depends, FastAPI, File, Form,
     HTTPException, Query, Request, Response, UploadFile
 )
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -169,6 +169,24 @@ async def handle_chat(chat_request: ChatRequest, db: Session = Depends(get_db), 
     except Exception as e:
         logger.error(f"Error en handle_chat: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/chat/stream")
+async def handle_chat_stream(query: str, db: Session = Depends(get_db), pgvector_db: Session = Depends(get_pgvector_db)):
+    if not active_kb.id:
+        async def error_generator():
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Sistema no configurado. No hay KB activa.'})}\\n\n"
+        return StreamingResponse(error_generator(), media_type="text/event-stream")
+
+    # La lógica de descomposición se centrará en la consulta actual.
+    return StreamingResponse(
+        query_orchestrator.stream_simple_query(
+            query=query,
+            kb_id=active_kb.id,
+            db=db,
+            pgvector_db=pgvector_db
+        ),
+        media_type="text/event-stream"
+    )
 
 @app.post("/query/", response_model=QueryResponse)
 async def handle_query(query_request: QueryRequest, db: Session = Depends(get_db)):

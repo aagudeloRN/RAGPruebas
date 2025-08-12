@@ -12,8 +12,8 @@
         <div class="main-background">
             <header>
                 <img src="/static/logo_blanco.png" alt="Logo Corporativo" style="display: block; margin: 0 auto 1rem auto; max-width: 150px; height: auto;">
-                <h1>Chat de Conocimiento</h1>
-                <p>Inicia una conversación con tus documentos.</p>
+                <h1>Sistema de Inteligencia Aumentada</h1>
+                <p>Interactúa con la base de conocimiento de Ruta N Medellín.</p>
                 <nav class="main-nav">
                     <!-- <a href="/" class="nav-button">Cargar Documento</a> -->
                     <a href="/library" class="nav-button">Ver Biblioteca</a>
@@ -21,6 +21,11 @@
                     <button id="new-chat-btn" class="nav-button">Nueva Conversación</button>
                 </nav>
             </header>
+
+            <div id="reasoning-trace" class="reasoning-trace" style="display: none;">
+                <h4>Proceso de Pensamiento:</h4>
+                <div id="trace-content"></div>
+            </div>
 
             <div id="chat-window" class="chat-window"></div>
 
@@ -36,6 +41,9 @@
                 </form>
                 <div id="context-warning" class="context-warning" style="display: none;">
                     La conversación es larga. Para obtener mejores resultados, considera <a href="#" onclick="startNewChat()">iniciar una nueva conversación</a>.
+                </div>
+                <div class="disclaimer">
+                    <p><strong>Descargo de Responsabilidad:</strong> Este sistema de inteligencia aumentada es una herramienta de apoyo desarrollada por Ruta N. La información generada, aunque se basa en fuentes y metodologías robustas (RAG), puede contener errores. Su uso es responsabilidad exclusiva del usuario, quien, en cumplimiento del principio de buena fe (Art. 83, Const. de Colombia), debe verificar la información antes de tomar cualquier decisión. Este sistema no reemplaza la consultoría profesional.</p>
                 </div>
             </div>
         </div>
@@ -123,29 +131,62 @@
             checkContextWarning();
             displayLoading(true);
 
-            try {
-                const response = await fetch('/chat/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: query, history: chatHistory.slice(0, -1) })
-                });
+            const reasoningTrace = document.getElementById('reasoning-trace');
+            const traceContent = document.getElementById('trace-content');
+            reasoningTrace.style.display = 'block'; // Asegurarse de que el contenedor sea visible
+            traceContent.innerHTML = ''; // Limpiar el rastro anterior
 
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.detail || 'Error en el servidor.');
+            const encodedQuery = encodeURIComponent(query);
+            const eventSource = new EventSource(`/chat/stream?query=${encodedQuery}`);
+
+            eventSource.onmessage = function(event) {
+                console.log("Evento recibido:", event.data); // DEBUG: Añadido para depuración
+                const data = JSON.parse(event.data);
+
+                switch (data.type) {
+                    case 'status':
+                        displayLoading(false); // Ocultar el spinner principal
+                        traceContent.innerHTML = `<p class="trace-status">${data.message}</p>`;
+                        break;
+                    case 'plan':
+                        let planHtml = '<ul>';
+                        data.data.steps.forEach((step, index) => {
+                            planHtml += `<li id="step-${index + 1}">${step}</li>`;
+                        });
+                        planHtml += '</ul>';
+                        traceContent.innerHTML = planHtml;
+                        break;
+                    case 'sub_answer':
+                        const stepElement = document.getElementById(`step-${data.step}`);
+                        if (stepElement) {
+                            stepElement.classList.add('completed');
+                            stepElement.innerHTML += ' ✔️';
+                        }
+                        break;
+                    case 'final_answer':
+                        displayLoading(false);
+                        appendMessage('assistant', data.data.answer, data.data.sources);
+                        chatHistory.push({ role: 'assistant', content: data.data.answer });
+                        break;
+                    case 'done':
+                        reasoningTrace.style.display = 'none';
+                        eventSource.close();
+                        checkContextWarning();
+                        break;
+                    case 'error':
+                        displayLoading(false);
+                        appendMessage('assistant', `Lo siento, ocurrió un error: ${data.message}`);
+                        eventSource.close();
+                        break;
                 }
+            };
 
-                const data = await response.json();
-
-                appendMessage('assistant', data.answer, data.sources);
-                chatHistory.push({ role: 'assistant', content: data.answer });
-
-            } catch (error) {
-                appendMessage('assistant', `Lo siento, ocurrió un error: ${error.message}`);
-            } finally {
+            eventSource.onerror = function(err) {
+                console.error("EventSource failed:", err);
                 displayLoading(false);
-                checkContextWarning();
-            }
+                appendMessage('assistant', 'Lo siento, ocurrió un error de conexión al procesar la respuesta.');
+                eventSource.close();
+            };
         }
 
         function startNewChat() {
