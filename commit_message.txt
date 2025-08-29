@@ -1,22 +1,16 @@
-feat: Implement Top Q&A module and UI improvements
+feat: Implementación de arquitectura multi-tenant y correcciones
 
-This commit introduces the Top Q&A module and further refines the user interface:
+Este commit introduce una arquitectura multi-tenant completa, permitiendo la gestión de múltiples Bases de Conocimiento (KB) aisladas.
 
-- **Top Q&A Module:**
-    - Added `hit_count` to `QACache` model (`app/models/qa_cache.py`) to track cache hits.
-    - Modified `create_qa_cache` and `get_qa_cache_by_question` (`app/db/crud_qa_cache.py`) to manage `hit_count` and perform semantic search.
-    - Implemented `get_top_qa_cache` function (`app/db/crud_qa_cache.py`) to retrieve top Q&A entries.
-    - Created `/faq` endpoint (`app/main.py`) to serve the new `faq.html` template.
-    - Added `GET /faq/top5` API endpoint (`app/main.py`) to expose top Q&A data.
-    - Designed `app/templates/faq.html` to display top Q&A with expandable answers and Markdown rendering.
-    - Updated navigation links in `index.html`, `library.html`, and `query.html` to point to `/faq`.
+Mejoras y Características:
+- Refactorización completa para soportar múltiples KBs, con la KB activa gestionada a través de la variable de entorno `ACTIVE_KB_ID`.
+- Nuevo panel de administración en `/admin` para crear y activar KBs.
+- El pipeline de ingesta ahora procesa documentos grandes en lotes para evitar errores de API en Pinecone.
+- Todas las operaciones de datos (CRUD, RAG, etc.) ahora operan en el contexto de la KB activa, asegurando el aislamiento de los datos.
 
-- **UI/UX Improvements:**
-    - Enhanced `faq.html` to render Markdown in answers for better presentation.
-    - Removed "Nueva Conversación" button from `faq.html` as it's not relevant to the FAQ page.
-
-- **Bug Fixes (related to async/await):**
-    - Ensured all `client_openai.chat.completions.create` and `client_openai.embeddings.create` calls in `app/services/rag_service.py` are correctly `await`ed.
-    - Corrected `SyntaxError` in `get_refined_query_suggestions` and `semantic_search_documents` by marking them as `async def`.
-
-These changes significantly improve the system's caching capabilities and user experience for frequently asked questions.
+Correcciones de Bugs:
+- Se corrigió un `AttributeError` en la eliminación de documentos después de renombrar la columna `preview_image_url` a `cover_image_url`.
+- Se solucionó un `TypeError` en el chat de conocimiento al no pasar el `kb_id` a los servicios RAG.
+- Se corrigió un `ImportError` al renombrar `get_kb` a `get_knowledge_base` para consistencia.
+- Se ajustó el prompt del RAG para asegurar que las respuestas sean siempre en español y se ciñan al contexto.
+- Se redujo el umbral de relevancia de Cohere para mejorar la recuperación de respuestas.

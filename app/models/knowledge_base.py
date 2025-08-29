@@ -1,7 +1,7 @@
 # app/models/knowledge_base.py
 from sqlalchemy import Column, String, Text, Boolean
 from sqlalchemy.orm import relationship
-from app.db.base import Base
+from app.db.base_class import Base
 
 class KnowledgeBase(Base):
     __tablename__ = 'knowledge_bases'

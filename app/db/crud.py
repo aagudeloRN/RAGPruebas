@@ -68,6 +68,17 @@ def update_document_processing_results(db: Session, kb_id: str, document_id: int
         db.refresh(db_document)
     return db_document
 
+def update_document_status(db: Session, document_id: int, status: str, status_message: str):
+    """Actualiza el estado y el mensaje de estado de un documento."""
+    db_document = db.query(Document).filter(Document.id == document_id).first()
+    if db_document:
+        db_document.status = status
+        db_document.status_message = status_message
+        db.commit()
+        db.refresh(db_document)
+    return db_document
+
+
 def get_unique_publishers(db: Session, kb_id: str, search_term: Optional[str] = None) -> List[str]:
     """Obtiene publicadores únicos para una KB específica."""
     query = db.query(Document.publisher).filter(Document.kb_id == kb_id).distinct()

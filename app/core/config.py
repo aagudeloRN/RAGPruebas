@@ -56,11 +56,18 @@ def load_active_kb_config():
 
     db = SessionLocal()
     try:
-        print(f"INFO: Cargando configuración para la KB activa: '{settings.ACTIVE_KB_ID}'")
-        kb_record = db.query(KnowledgeBase).filter(KnowledgeBase.id == settings.ACTIVE_KB_ID).first()
+        print(f"INFO: Buscando la KB activa en la base de datos...")
+        kb_record = db.query(KnowledgeBase).filter(KnowledgeBase.is_active == True).first()
         
         if not kb_record:
-            raise ValueError(f"No se encontró la Base de Conocimiento con id='{settings.ACTIVE_KB_ID}' en la base de datos.")
+            # Fallback: si ninguna está activa, intentar cargar la 'default' o la primera que encuentre
+            logger.warning("No se encontró una KB activa. Intentando cargar la KB 'default'.")
+            kb_record = db.query(KnowledgeBase).filter(KnowledgeBase.id == 'default').first()
+            if not kb_record:
+                logger.warning("No se encontró la KB 'default'. Cargando la primera KB disponible.")
+                kb_record = db.query(KnowledgeBase).first()
+            if not kb_record:
+                raise ValueError("No se encontró ninguna Base de Conocimiento en la base de datos.")
 
         active_kb.id = kb_record.id
         active_kb.name = kb_record.name

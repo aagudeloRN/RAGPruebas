@@ -13,6 +13,7 @@ from app.core.config import settings, active_kb
 from app.core.prompts import RAG_ANALYST_PROMPT_TEMPLATE, QUERY_REFINEMENT_PROMPT
 from app.db.crud_qa_cache import get_qa_cache_by_question, create_qa_cache
 from app.db.crud_kb import get_knowledge_base # Importar para obtener la KB
+from app.db.crud import get_document # Importar para obtener el documento completo
 from app.schemas.document import QueryResponse, Source
 from app.schemas.qa_cache import QACacheCreate
 
@@ -38,7 +39,16 @@ async def perform_rag_query(query: str, db: Session, pgvector_db: Session, kb_id
     cached_item = await get_qa_cache_by_question(pgvector_db, question=query, kb_id=kb_id)
     if cached_item:
         logger.info(f"Cache HIT para KB '{kb_id}' (ID: {cached_item.id}).")
-        sources_from_cache = [Source.model_validate(s) for s in json.loads(cached_item.context)]
+        sources_from_cache = []
+        # Reconstruir Source objects y asegurar que source_url esté presente
+        for s_data in json.loads(cached_item.context):
+            source = Source.model_validate(s_data)
+            if not source.source_url and source.id:
+                # Si source_url falta, intentar obtenerlo de la DB
+                db_document = get_document(db, source.id, kb_id)
+                if db_document and db_document.source_url:
+                    source.source_url = db_document.source_url
+            sources_from_cache.append(source)
         return QueryResponse(answer=cached_item.answer, sources=sources_from_cache, cache_hit=True)
 
     logger.info(f"Cache MISS para KB '{kb_id}'. Iniciando proceso RAG.")
@@ -58,7 +68,7 @@ async def perform_rag_query(query: str, db: Session, pgvector_db: Session, kb_id
     try:
         search_response = pinecone_index.query(
             vector=query_embedding,
-            top_k=15,
+            top_k=20, # Aumentado de 15 a 20
             include_metadata=True,
             namespace=current_kb.pinecone_namespace
         )
@@ -99,13 +109,16 @@ async def perform_rag_query(query: str, db: Session, pgvector_db: Session, kb_id
         
         doc_id = original_match.metadata.get('document_id')
         if doc_id and doc_id not in sources:
-            sources[doc_id] = {
-                "id": doc_id,
-                "title": original_match.metadata.get('title', 'N/A'),
-                "publisher": publisher,
-                "publication_year": str(year),
-                "source_url": original_match.metadata.get('source_url')
-            }
+            # Obtener el documento completo de la base de datos para acceder a source_url
+            db_document = get_document(db, doc_id, kb_id)
+            if db_document:
+                sources[doc_id] = {
+                    "id": doc_id,
+                    "title": db_document.title or original_match.metadata.get('title', 'N/A'),
+                    "publisher": db_document.publisher or publisher,
+                    "publication_year": str(db_document.publication_year) if db_document.publication_year else str(year),
+                    "source_url": db_document.source_url # Usar la URL de la base de datos
+                }
 
     if not context:
         return QueryResponse(answer="No se encontró información suficientemente relevante.", sources=[])

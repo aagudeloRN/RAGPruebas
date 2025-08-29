@@ -1,0 +1,87 @@
+
+# Análisis Comparativo: Nuestro Sistema vs. Técnicas Avanzadas de RAG (Weaviate E-book)
+
+Este documento analiza el estado actual de nuestro sistema de Inteligencia Aumentada en comparación con las técnicas avanzadas descritas en el e-book "Advanced RAG Techniques" de Weaviate.
+
+---
+
+## 1. Optimización de la Indexación (Pre-procesamiento y Chunking)
+
+| Técnica del E-book | ¿Implementada en nuestro sistema? | Análisis y Comentarios |
+| :--- | :--- | :--- |
+| **Data Pre-processing** | **Parcialmente.** | El e-book menciona la importancia de preservar la estructura. Nuestro pipeline `V1` es básico. **Nuestro nuevo pipeline `V2` (inspirado en Dolphin) está implementando exactamente esta mejora**, al parsear el layout y las tablas. |
+| **Chunking: Fixed-size** | **Sí.** | Es el método de nuestro pipeline `V1`. El e-book lo describe como simple pero con falta de contexto. |
+| **Chunking: Recursive** | No. | Una mejora sobre el tamaño fijo, pero sigue siendo una división "tonta". |
+| **Chunking: Document-based** | **Parcialmente.** | Nuestro `V2` lo hace al separar tablas y tratarlas como chunks estructurales. |
+| **Chunking: Semantic** | No. | Técnica avanzada donde se agrupan frases por similitud semántica. Es muy potente pero computacionalmente más cara. |
+| **Chunking: LLM-based** | No. | El método más avanzado (y caro), donde un LLM crea los chunks. |
+
+**Conclusión de la Fase 1:** Estamos haciendo lo correcto al desarrollar el **pipeline `V2`**, que nos mueve de un "chunking" de tamaño fijo a uno mucho más inteligente y estructural, alineándose perfectamente con las recomendaciones del e-book.
+
+---
+
+## 2. Optimización Pre-Recuperación (Transformación de la Consulta)
+
+| Técnica del E-book | ¿Implementada en nuestro sistema? | Análisis y Comentarios |
+| :--- | :--- | :--- |
+| **Query Transformation** | **Sí, parcialmente.** | Hacemos "Query Rewriting" de forma implícita con la función `_condense_query_with_history`, que reformula la pregunta basándose en el historial del chat. |
+| **Query Decomposition** | **¡Sí!** | **Esta es exactamente la mejora principal que acabamos de implementar.** Nuestro "Agente Descompositor" que crea un plan de varios pasos es una implementación directa de esta técnica. |
+| **Query Routing** | No. | Una técnica muy avanzada donde un "router" decide a qué sistema enviar la pregunta (a un RAG, a una búsqueda web, etc.). Es un paso futuro muy interesante. |
+
+**Conclusión de la Fase 2:** ¡Estamos a la vanguardia aquí! La implementación de nuestro **Agente Descompositor** nos coloca directamente en la categoría de RAG avanzado.
+
+---
+
+## 3. Optimización de la Recuperación
+
+| Técnica del E-book | ¿Implementada en nuestro sistema? | Análisis y Comentarios |
+| :--- | :--- | :--- |
+| **Metadata Filtering** | **Sí.** | Nuestro sistema ya está preparado para esto. Filtramos por `kb_id` en cada consulta, y la interfaz de la biblioteca tiene filtros por publisher, año, etc. |
+| **Excluding Outliers** | No. | No usamos técnicas como "distance thresholding" o "autocut". Confiamos en el re-ranking para manejar esto. |
+| **Hybrid Search** | No. | Actualmente solo usamos búsqueda vectorial (semántica). No la combinamos con búsqueda por palabras clave (keyword-based). |
+| **Embedding Model Fine-tuning** | No. | Usamos modelos de embedding pre-entrenados. No los hemos re-entrenado con nuestros datos específicos. |
+
+**Conclusión de la Fase 3:** Esta es un área con **gran potencial de mejora**. La más impactante y relativamente fácil de implementar sería la **Búsqueda Híbrida (Hybrid Search)**.
+
+---
+
+## 4. Optimización Post-Recuperación
+
+| Técnica del E-book | ¿Implementada en nuestro sistema? | Análisis y Comentarios |
+| :--- | :--- | :--- |
+| **Re-ranking** | **Sí.** | **Usamos Cohere para el re-ranking.** Esta es una de las técnicas más importantes para mejorar la calidad del contexto, y ya la tenemos. |
+| **Context Enhancement** | No directamente. | El e-book menciona "sentence window retrieval". Nuestro chunking semántico en `V2` busca lograr un efecto similar al crear chunks más coherentes. |
+| **Context Compression** | No. | No comprimimos el contexto antes de enviarlo al LLM. |
+| **Prompt Engineering** | **Sí.** | Hemos trabajado extensamente en nuestros prompts, especialmente en el de síntesis final con instrucciones APA, lo cual es una forma de Prompt Engineering avanzado. |
+| **LLM Fine-tuning** | No. | Usamos modelos de propósito general como GPT-4o. |
+
+**Conclusión de la Fase 4:** Estamos fuertes aquí gracias al **re-ranking de Cohere** y a nuestro **Prompt Engineering**.
+
+---
+
+## Resumen General y Próximos Pasos Sugeridos
+
+**Técnicas que YA tenemos (¡Estamos muy bien!):**
+*   **Query Decomposition** (nuestro Agente Descompositor).
+*   **Re-ranking** (con Cohere).
+*   **Metadata Filtering**.
+*   **Prompt Engineering** avanzado.
+
+**Técnicas que ESTAMOS IMPLEMENTANDO:**
+*   **Data Pre-processing y Chunking Avanzado** (con nuestro pipeline `V2`).
+
+**Oportunidades de Mejora (Inspiradas por el E-book):**
+
+1.  **Búsqueda Híbrida (Hybrid Search):**
+    *   **¿Qué es?** Combinar nuestra búsqueda vectorial actual (que entiende el significado) con una búsqueda tradicional de palabras clave (que es perfecta para encontrar términos exactos como nombres propios, códigos o acrónimos).
+    *   **¿Por qué?** A veces, la búsqueda semántica puede fallar al no encontrar una coincidencia exacta de una palabra clave importante. La búsqueda híbrida nos da lo mejor de ambos mundos.
+    *   **Implementación:** Pinecone soporta esto de forma nativa. Implicaría modificar nuestras consultas a Pinecone para que incluyan tanto el vector como una lista de palabras clave.
+
+2.  **Fine-tuning del Modelo de Embedding:**
+    *   **¿Qué es?** Re-entrenar el modelo de embedding con nuestros propios documentos para que entienda mejor los matices y la terminología específica de Ruta N y sus áreas de interés.
+    *   **¿Por qué?** Mejoraría la precisión de la recuperación inicial, ya que el modelo sería un "experto" en nuestro dominio.
+    *   **Implementación:** Este es un proceso más complejo y costoso, típico de una fase de madurez del proyecto.
+
+**Recomendación:**
+
+La mejora más lógica, impactante y alcanzable en este momento sería implementar la **Búsqueda Híbrida (Hybrid Search)**.

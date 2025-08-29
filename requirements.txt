@@ -22,3 +22,6 @@ ragas
 PyPDF2
 # Cache buster 1PyPDF2
 itsdangerous
+PyMuPDF
+pandas
+tabulate

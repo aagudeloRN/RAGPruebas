@@ -1,9 +1,5 @@
-from sqlalchemy.ext.declarative import declarative_base
-
-# This is the base class that all SQLAlchemy models will inherit.
-Base = declarative_base()
-
-# Import all models here to ensure they are registered with SQLAlchemy's metadata
-from app.models.knowledge_base import KnowledgeBase
+# app/db/base.py
+from app.db.base_class import Base
 from app.models.document import Document
+from app.models.knowledge_base import KnowledgeBase
 from app.models.qa_cache import QACache

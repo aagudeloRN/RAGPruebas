@@ -26,6 +26,7 @@ from app.modules.document_management.document_service import (
 from app.modules.data_ingestion.ingestion_service import (
     handle_process_document, handle_upload_document
 )
+from app.modules.data_ingestion_v2.ingestion_service_v2 import handle_ingestion_v2
 from app.db.crud import (
     create_document, get_document, get_document_status,
     get_documents, get_unique_publishers
@@ -131,7 +132,7 @@ async def validate_metadata_page(request: Request, document_id: int, db: Session
     doc = get_document(db, document_id=document_id, kb_id=active_kb.id)
     if not doc:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
-    return templates.TemplateResponse("validate_metadata.html", {"request": request, "document": doc})
+    return templates.TemplateResponse("validate_metadata.html", {"request": request, "document": doc, "recommended_pipeline": doc.recommended_pipeline})
 
 @app.post("/save-metadata/{document_id}")
 async def save_metadata_endpoint(document_id: int, background_tasks: BackgroundTasks, request: Request, db: Session = Depends(get_db)):
@@ -174,7 +175,7 @@ async def handle_chat(chat_request: ChatRequest, db: Session = Depends(get_db), 
 async def handle_chat_stream(query: str, db: Session = Depends(get_db), pgvector_db: Session = Depends(get_pgvector_db)):
     if not active_kb.id:
         async def error_generator():
-            yield f"data: {json.dumps({'type': 'error', 'message': 'Sistema no configurado. No hay KB activa.'})}\\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Sistema no configurado. No hay KB activa.'})}\n\n"
         return StreamingResponse(error_generator(), media_type="text/event-stream")
 
     # La lógica de descomposición se centrará en la consulta actual.
@@ -283,7 +284,10 @@ async def activate_kb_endpoint(request: Request, kb_id: str = Form(...), db: Ses
 async def upload_document_endpoint(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if not active_kb.id:
         raise HTTPException(status_code=503, detail="Sistema no configurado. No hay una Base de Conocimiento activa.")
-    return await handle_upload_document(file=file, db=db, kb_id=active_kb.id)
+    response_data = await handle_upload_document(file=file, db=db, kb_id=active_kb.id)
+    document_id = response_data["document_id"]
+    pipeline_rec = response_data["recommended_pipeline"]
+    return RedirectResponse(url=f"/validate-metadata/{document_id}?pipeline_rec={pipeline_rec}", status_code=303)
 
 @app.post("/process-document/{document_id}", response_model=DocumentResponse, status_code=202)
 async def process_document(
@@ -293,6 +297,19 @@ async def process_document(
     if not active_kb.pinecone_namespace:
         raise HTTPException(status_code=503, detail="Sistema no configurado. No hay un namespace de Pinecone activo.")
     return await handle_process_document(
+        document_id=document_id, background_tasks=background_tasks,
+        document_data=document_data, db=db,
+        pinecone_namespace=active_kb.pinecone_namespace
+    )
+
+@app.post("/process-document-v2/{document_id}", response_model=DocumentResponse, status_code=202)
+async def process_document_v2(
+    document_id: int, background_tasks: BackgroundTasks,
+    document_data: DocumentCreateRequest, db: Session = Depends(get_db)
+):
+    if not active_kb.pinecone_namespace:
+        raise HTTPException(status_code=503, detail="Sistema no configurado. No hay un namespace de Pinecone activo.")
+    return await handle_ingestion_v2(
         document_id=document_id, background_tasks=background_tasks,
         document_data=document_data, db=db,
         pinecone_namespace=active_kb.pinecone_namespace
@@ -318,3 +335,19 @@ async def get_top_qa(db: Session = Depends(get_pgvector_db)):
     if not active_kb.id:
         return [] # Devolver lista vacía si no hay KB activa
     return get_top_qa_cache(db, kb_id=active_kb.id)
+
+# --- Endpoints de Servicios de Procesamiento de Documentos ---
+
+@app.get("/documents/{document_id}/extract-tables", response_model=List[str])
+def get_document_tables(document_id: int, db: Session = Depends(get_db)):
+    """Extrae todas las tablas de un documento y las devuelve como una lista de strings en formato Markdown."""
+    doc = get_document(db, document_id=document_id, kb_id=active_kb.id)
+    if not doc or not doc.file_path:
+        raise HTTPException(status_code=404, detail="Documento no encontrado o sin ruta de archivo.")
+    
+    try:
+        tables_as_markdown = extract_and_format_tables(doc.file_path)
+        return tables_as_markdown
+    except Exception as e:
+        logger.error(f"Error al extraer tablas del documento {document_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"No se pudieron extraer las tablas: {e}")

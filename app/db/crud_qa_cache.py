@@ -2,10 +2,13 @@
 from sqlalchemy.orm import Session
 from app.models.qa_cache import QACache
 from app.schemas.qa_cache import QACacheCreate
+from app.schemas.document import Source # Importar Source
+from app.db.crud import get_document # Importar para obtener el documento completo
 from app.core.config import settings
 from typing import List
 from openai import AsyncOpenAI
 import logging
+import json # Importar json
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +115,32 @@ async def _evict_cache_entries(db: Session, kb_id: str, max_size: int = 100):
         db.rollback()
         logger.error(f"Error durante el desalojo de caché para KB '{kb_id}': {e}", exc_info=True)
 
+from app.db.crud import get_document # Importar para obtener el documento completo
+
 def get_top_qa_cache(db: Session, kb_id: str, limit: int = 5) -> List[QACache]:
-    """Recupera las entradas de caché más populares para una KB específica."""
-    return db.query(QACache).filter(QACache.kb_id == kb_id).order_by(QACache.hit_count.desc()).limit(limit).all()
+    """Recupera las entradas de caché más populares para una KB específica y enriquece las fuentes."""
+    qa_entries = db.query(QACache).filter(QACache.kb_id == kb_id).order_by(QACache.hit_count.desc()).limit(limit).all()
+    
+    enriched_qa_entries = []
+    for entry in qa_entries:
+        # Deserializar el contexto a objetos Source
+        sources_data = json.loads(entry.context)
+        enriched_sources = []
+        for s_data in sources_data:
+            source = Source.model_validate(s_data)
+            # Si source_url falta, intentar obtenerlo de la DB
+            if not source.source_url and source.id:
+                db_document = get_document(db, source.id, kb_id)
+                if db_document and db_document.source_url:
+                    source.source_url = db_document.source_url
+            enriched_sources.append(source)
+        
+        # Crear un nuevo QACacheSchema con las fuentes enriquecidas
+        # Nota: Necesitamos importar QACacheSchema y Source aquí o pasarlos como tipo
+        # Para simplificar, devolveremos el modelo de DB y haremos la conversión en main.py
+        # O, mejor, modificamos el modelo QACache para que tenga un property que haga esto.
+        # Por ahora, devolveremos el modelo de DB y haremos la conversión en main.py
+        entry.sources = enriched_sources # Añadir las fuentes enriquecidas al objeto del modelo
+        enriched_qa_entries.append(entry)
+
+    return enriched_qa_entries

@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Text, ARRAY, ForeignKey
 from sqlalchemy.orm import relationship
-from app.db.base import Base
+from app.db.base_class import Base
 
 class Document(Base):
     __tablename__ = "documents" # Cambiado de Repositori_Oficial a documents para estandarizar
@@ -16,6 +16,6 @@ class Document(Base):
     summary = Column(Text, nullable=True)
     keywords = Column(ARRAY(String), nullable=True)
     cover_image_url = Column(Text, nullable=True)
-    status = Column(String(50), default='processing', nullable=False)
+    status = Column(String(50), default='awaiting_validation', nullable=False)
 
     knowledge_base = relationship("KnowledgeBase", back_populates="documents")

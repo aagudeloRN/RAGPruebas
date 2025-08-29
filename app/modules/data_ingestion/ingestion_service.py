@@ -1,3 +1,4 @@
+
 # app/modules/data_ingestion/ingestion_service.py
 import os
 import uuid
@@ -6,20 +7,37 @@ from typing import Dict, Any
 from fastapi import UploadFile, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 import shutil
+import fitz  # PyMuPDF
 
 from .pipeline import upload_and_extract_metadata, process_document_for_rag
 from app.db.crud import create_document, update_document_processing_results, get_document
+from app.modules.document_analysis.analyzer import analyze_pdf_structure
 from app.schemas.document import DocumentCreateRequest, DocumentResponse
-from app.models.document import Document # <-- Importación añadida
+from app.models.document import Document
 
 logger = logging.getLogger(__name__)
 
 TEMP_FILE_DIR = "/tmp/rag_uploads"
 os.makedirs(TEMP_FILE_DIR, exist_ok=True)
 
+def recommend_pipeline(doc_path: str) -> str:
+    """Analiza un documento y recomienda un pipeline de ingesta."""
+    try:
+        doc = fitz.open(doc_path)
+        has_tables = any(page.find_tables().tables for page in doc)
+        if has_tables:
+            logger.info(f"Documento {doc_path} contiene tablas. Recomendando pipeline V2.")
+            return "V2"
+    except Exception as e:
+        logger.error(f"No se pudo analizar el documento para recomendación: {e}")
+        return "V1" # Fallback a V1 si hay errores
+    
+    logger.info(f"Documento {doc_path} es simple. Recomendando pipeline V1.")
+    return "V1"
+
 async def handle_upload_document(file: UploadFile, db: Session, kb_id: str) -> Dict[str, Any]:
     """
-    Guarda un PDF, extrae metadatos y crea un registro preliminar en la BD para una KB específica.
+    Guarda un PDF, extrae metadatos, analiza su estructura y crea un registro en la BD.
     """
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="El archivo debe ser un PDF.")
@@ -48,24 +66,33 @@ async def handle_upload_document(file: UploadFile, db: Session, kb_id: str) -> D
             "keywords": all_metadata.get("keywords", []),
             "status": "awaiting_validation",
         }
-        # Pasamos el kb_id al crear el documento
         db_document = create_document(db=db, document_data=db_safe_metadata, kb_id=kb_id)
         
         final_temp_path = os.path.join(TEMP_FILE_DIR, f"{db_document.id}.pdf")
         shutil.move(temp_file_path, final_temp_path)
+        db_document.file_path = final_temp_path # Guardar la ruta final
+
+        # Recomendar un pipeline
+        pipeline_rec = recommend_pipeline(final_temp_path)
+        db.commit()
+        db.refresh(db_document)
+
+        metadata_response = {
+            **DocumentResponse.from_orm(db_document).model_dump(),
+            "cover_image_url": all_metadata.get("cover_image_url"),
+            "is_ocr": all_metadata.get("is_ocr", False),
+            "processing_notes": all_metadata.get("processing_notes", "")
+        }
 
         return {
             "document_id": db_document.id,
-            "metadata": {
-                **DocumentResponse.from_orm(db_document).model_dump(),
-                "cover_image_url": all_metadata.get("cover_image_url"),
-                "is_ocr": all_metadata.get("is_ocr", False),
-                "processing_notes": all_metadata.get("processing_notes", "")
-            }
+            "metadata": metadata_response,
+            "recommended_pipeline": pipeline_rec
         }
     except Exception as e:
         db.rollback()
-        os.remove(temp_file_path)
+        if 'temp_file_path' in locals() and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
         logger.error(f"Error al crear el registro del documento: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error al guardar el documento en la BD.")
 
